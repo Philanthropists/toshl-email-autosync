@@ -8,6 +8,16 @@ import (
 
 var version string
 
+func MatchesAnyRegexp(r []*regexp.Regexp, s string) (bool, *regexp.Regexp) {
+	for _, regex := range r {
+		if regex.Match([]byte(s)) {
+			return true, regex
+		}
+	}
+
+	return false, nil
+}
+
 func ExtractFieldsStringWithRegexp(s string, r *regexp.Regexp) map[string]string {
 	match := r.FindStringSubmatch(s)
 	result := make(map[string]string)

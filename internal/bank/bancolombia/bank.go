@@ -1,7 +1,6 @@
 package bancolombia
 
 import (
-	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -32,47 +31,33 @@ func (b Bancolombia) FilterMessage(msg imaptypes.Message) bool {
 
 	if keep {
 		text := string(msg.RawBody)
-		lowerCaseText := strings.ToLower(text)
-
-		shouldProcess := strings.Contains(lowerCaseText, "pago")
-		shouldProcess = shouldProcess || strings.Contains(lowerCaseText, "compra")
-		shouldProcess = shouldProcess || strings.Contains(lowerCaseText, "transferencia")
-
-		keep = shouldProcess
+		keep, _ = common.MatchesAnyRegexp(regexMatching, text)
 	}
 
 	return keep
 }
 
-var regexpMap = map[string]*regexp.Regexp{
-	"pago":          regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) a (?P<place>.+) desde (?:cta|T\.CRED) \*(?P<account>\d{4})\.`),
-	"compra":        regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) en (?P<place>.+)\..+T\.(?:Cred|Deb) \*(?P<account>\d{4})\.`),
-	"transferencia": regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) desde cta \*(?P<account>\d{4}).+cta (?P<place>\d{11,16})\.`),
+var regexMatching = []*regexp.Regexp{
+	regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) a (?P<place>.+) desde (?:cta|T\.CRED) \*(?P<account>\d{4})\.`),
+	regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) en (?P<place>[^\.]+)\..+T\.Cred \*(?P<account>\d{4})\.`),
+	regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) en (?P<place>.+)\..+T\.(?:Cred|Deb) \*(?P<account>\d{4})\.`),
+	regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) desde cta \*(?P<account>\d{4}).+cta (?P<place>\d{11,16})\.`),
 }
 
 func (b Bancolombia) ExtractTransactionInfoFromMessage(msg imaptypes.Message) (*synctypes.TransactionInfo, error) {
 	text := string(msg.RawBody)
-	lowerCaseText := strings.ToLower(text)
 
-	var selected string
-	for key := range regexpMap {
-		if strings.Contains(lowerCaseText, key) {
-			selected = key
-			break
-		}
+	isFound, selectedRegexp := common.MatchesAnyRegexp(regexMatching, text)
+	if !isFound {
+		return nil, fmt.Errorf("message did not match any regexp from Bancolombia")
 	}
-
-	if selected == "" {
-		return nil, errors.New("message does not match any transaction type case")
-	}
-
-	selectedRegexp := regexpMap[selected]
 
 	result := common.ExtractFieldsStringWithRegexp(text, selectedRegexp)
 
 	if !common.ContainsAllRequiredFields(result) {
 		return nil, fmt.Errorf("message does not contain all required fields - result [%+v]", result)
 	}
+
 	value, err := getValueFromText(result["value"])
 	if err != nil {
 		return nil, err

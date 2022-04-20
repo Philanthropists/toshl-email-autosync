@@ -6,9 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand"
 	"strings"
-	"time"
 
 	"github.com/Philanthropists/toshl-email-autosync/internal/logger"
 	"github.com/Philanthropists/toshl-email-autosync/internal/market/rapidapi"
@@ -39,12 +37,8 @@ func init() {
 }
 
 func shouldRun(ctx context.Context) bool {
-	const limit = 10000
-	rand.Seed(time.Now().UnixNano())
-	n := rand.Intn(limit)
-
 	// TODO Use DynamoDB to get the last reported date or last stock data
-	return n < 100
+	return false
 }
 
 func Run(ctx context.Context, auth types.Auth) error {

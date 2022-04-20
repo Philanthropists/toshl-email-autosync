@@ -18,6 +18,7 @@ func (b Bancolombia) FilterMessage(msg imaptypes.Message) bool {
 	keep := true
 	keep = keep && msg.Message != nil
 	keep = keep && msg.Message.Envelope != nil
+
 	if keep {
 		keep = false
 		for _, address := range msg.Message.Envelope.From {

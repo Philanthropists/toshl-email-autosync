@@ -18,6 +18,7 @@ type Auth struct {
 	TwilioToNumber   string `json:"twilio-to-number"`
 	RapidApiKey      string `json:"rapidapi-key"`
 	RapidApiHost     string `json:"rapidapi-host"`
+	ArchiveMailbox   string `json:"archive_mailbox"`
 }
 
 type Currency struct {

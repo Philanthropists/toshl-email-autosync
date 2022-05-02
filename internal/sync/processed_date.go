@@ -14,7 +14,7 @@ func GetLastProcessedDate() time.Time {
 	logger := logger.GetLogger()
 	const dateField = "LastProcessedDate"
 	const tableName = "toshl-data"
-	defaultDate := time.Now().Add(-365 * 24 * time.Hour) // from 1 year in the past by default
+	defaultDate := time.Now().Add(-30 * 24 * time.Hour) // from 1 month in the past by default
 
 	var selectedDate time.Time
 	defer func() {

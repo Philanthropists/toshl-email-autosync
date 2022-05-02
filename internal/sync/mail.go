@@ -2,6 +2,7 @@ package sync
 
 import (
 	"github.com/Philanthropists/toshl-email-autosync/internal/datasource/imap"
+	"github.com/Philanthropists/toshl-email-autosync/internal/datasource/imap/types"
 	synctypes "github.com/Philanthropists/toshl-email-autosync/internal/sync/types"
 )
 
@@ -31,28 +32,33 @@ func GetEmailFromInbox(mailClient imap.MailClient, banks []synctypes.BankDelegat
 	return messages, nil
 }
 
-func ArchiveEmailsOfSuccessfulTransactions(mailClient imap.MailClient, successfulTransactions []*synctypes.TransactionInfo) {
-	const archivedMailbox = "[Gmail]/All Mail"
-	mailboxes, err := mailClient.GetMailBoxes()
-	if err == nil {
-		found := false
-		for _, mailbox := range mailboxes {
-			if mailbox == archivedMailbox {
-				found = true
-				break
-			}
-		}
+func ArchiveEmailsFromSuccessfulTransactions(mailClient imap.MailClient, archiveMailbox string, successfulTransactions []*synctypes.TransactionInfo) {
+	if archiveMailbox == "" {
+		panic("archive mailbox name cannot be nil-value")
+	}
 
-		if !found {
-			panic("archive mailbox not found " + archivedMailbox)
+	mailboxes, err := mailClient.GetMailBoxes()
+	if err != nil {
+		panic(err)
+	}
+
+	found := false
+	for _, mailbox := range mailboxes {
+		if string(mailbox) == archiveMailbox {
+			found = true
+			break
 		}
+	}
+
+	if !found {
+		panic("archive mailbox not found " + archiveMailbox)
 	}
 
 	var msgsIds []uint32
 	for _, t := range successfulTransactions {
 		msgsIds = append(msgsIds, t.MsgId)
 	}
-	err = mailClient.Move(msgsIds, archivedMailbox)
+	err = mailClient.Move(msgsIds, types.Mailbox(archiveMailbox))
 	if err != nil {
 		panic(err)
 	}

@@ -177,7 +177,7 @@ func Run(ctx context.Context, auth types.Auth) error {
 
 	status.SuccessfulTxs, status.FailedTxs = CreateEntries(toshlClient, transactions, mappableAccounts, internalCategoryId)
 
-	ArchiveEmailsOfSuccessfulTransactions(mailClient, status.SuccessfulTxs)
+	ArchiveEmailsFromSuccessfulTransactions(mailClient, auth.ArchiveMailbox, status.SuccessfulTxs)
 
 	if err := UpdateLastProcessedDate(status.FailedTxs); err != nil {
 		return fmt.Errorf("failed to update last processed date: %s", err)

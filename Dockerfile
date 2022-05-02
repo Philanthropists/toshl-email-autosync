@@ -17,6 +17,8 @@ RUN GOOS=${GOOS} GOARCH=${GOARCH} CGO_ENABLED=${CGO_ENABLED} \
 		 -gcflags=-G=3 \
 		 -o ${LOC}/main cmd/aws-lambda/main.go
 
+# ---
+
 FROM alpine:3.15.0
 
 WORKDIR /

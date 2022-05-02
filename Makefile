@@ -4,12 +4,12 @@ gcflags := -G=3
 flags := -ldflags=${ldflags} -gcflags=${gcflags}
 
 .PHONY: build
-build: bin vendor fmt
+build: bin vendor fmt credentials
 	go build ${flags} -o bin cmd/run/run.go
 	cp credentials.json bin/
 
 .PHONY: build-for-lambda
-build-for-lambda: bin clean vendor fmt
+build-for-lambda: bin clean vendor fmt credentials
 	GOOS=linux \
 	GOARCH=amd64 \
 	CGO_ENABLED=0 \
@@ -17,11 +17,18 @@ build-for-lambda: bin clean vendor fmt
 	cp credentials.json bin/
 
 .PHONY: build-docker
-build-docker: docker-lint clean fmt
+build-docker: docker-lint clean fmt credentials
 	docker buildx build \
 		--platform linux/amd64 \
 		--build-arg COMMIT=${git-commit} \
 		-t toshl-sync .
+
+.PHONY: credentials
+credentials: credentials.json
+credentials.json:
+	@[ -z "${TOSHL_SECRETS_LOCATION}" ] && read -p "Where are the secrets?: " TOSHL_SECRETS_LOCATION; \
+	read -p "What credentials should I use?: " cred_file; \
+	cp "$${TOSHL_SECRETS_LOCATION}/$${cred_file}.json" credentials.json
 
 bin:
 	mkdir -p bin
@@ -50,6 +57,10 @@ vendor: tidy
 .PHONY: tidy
 tidy:
 	go mod tidy
+
+.PHONY: clean-all
+clean-all: clean
+	rm -f credentials.json
 
 .PHONY: clean
 clean:

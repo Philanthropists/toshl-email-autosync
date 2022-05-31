@@ -161,3 +161,4 @@ Temporary Items
 bin/*
 credentials.json
 registry.json
+.subject

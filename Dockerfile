@@ -19,14 +19,14 @@ RUN GOOS=${GOOS} GOARCH=${GOARCH} CGO_ENABLED=${CGO_ENABLED} \
 
 # ---
 
-FROM alpine:3.15.0
+FROM alpine:3.16.0
 
 WORKDIR /
 
 # Needed for getting timezone locale info (i.e. America/Bogota)
 RUN apk add --no-cache tzdata=2022a-r0
 
-COPY credentials.json .
 COPY --from=builder /usr/local/bin/main ./main
+COPY credentials.json .
 
 ENTRYPOINT [ "/main"]

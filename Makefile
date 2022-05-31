@@ -3,6 +3,8 @@ ldflags := "-s -w -X main.GitCommit=${git-commit}"
 gcflags := -G=3
 flags := -ldflags=${ldflags} -gcflags=${gcflags}
 
+docker-build-push: docker-build docker-push
+
 .PHONY: build
 build: bin clean vendor fmt credentials
 	go build ${flags} -o bin cmd/run/run.go
@@ -17,19 +19,24 @@ build-for-lambda: bin clean vendor fmt credentials
 	cp credentials.json bin/
 
 .PHONY: build-docker
-build-docker: docker-lint clean fmt credentials
+docker-build: docker-lint clean fmt credentials
 	docker buildx build \
 		--platform linux/amd64 \
 		--build-arg COMMIT=${git-commit} \
-		-t toshl-sync .
+		-t toshl-sync .; \
+	make clean
 
-registry.json:
+.subject:
+	@read -p "What subject should I use?: " subject; \
+	echo $${subject} > .subject
+
+registry.json: .subject
 	@[ -z "${TOSHL_SECRETS_LOCATION}" ] && read -p "Where are the secrets?: " TOSHL_SECRETS_LOCATION; \
-	read -p "What registry should I use?: " registry; \
+	registry=$$(cat .subject); \
 	cp "$${TOSHL_SECRETS_LOCATION}/$${registry}_registry.json" registry.json
 
 .PHONY: upload-docker
-upload-docker: registry.json
+docker-push: registry.json
 	awsprofile="$$(cat registry.json | jq -r .awsprofile)"; \
 	registry="$$(cat registry.json | jq -r .registry)"; \
 	aws --profile $${awsprofile} ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $${registry}; \
@@ -39,11 +46,10 @@ upload-docker: registry.json
 
 .PHONY: credentials
 credentials: credentials.json
-credentials.json:
+credentials.json: .subject
 	@[ -z "${TOSHL_SECRETS_LOCATION}" ] && read -p "Where are the secrets?: " TOSHL_SECRETS_LOCATION; \
-	read -p "What credentials should I use?: " cred_file; \
-	cp "$${TOSHL_SECRETS_LOCATION}/$${cred_file}_creds.json" credentials.json; \
-	rm -f credentials.json
+	cred_file=$$(cat .subject); \
+	cp "$${TOSHL_SECRETS_LOCATION}/$${cred_file}_creds.json" credentials.json
 
 bin:
 	mkdir -p bin
@@ -75,9 +81,10 @@ tidy:
 
 .PHONY: clean-all
 clean-all: clean
-	rm -f credentials.json
-	rm -f registry.json
+	rm -f .subject
 
 .PHONY: clean
 clean:
 	rm -rf bin/*
+	rm -f credentials.json
+	rm -f registry.json

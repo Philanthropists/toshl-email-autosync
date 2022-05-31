@@ -37,7 +37,7 @@ func init() {
 }
 
 func shouldRun(ctx context.Context) bool {
-	// TODO Use DynamoDB to get the last reported date or last stock data
+	// TODO: Use DynamoDB to get the last reported date or last stock data
 	return false
 }
 

@@ -15,7 +15,7 @@ import (
 
 var localLocation *time.Location
 
-// TODO obtain this from DynamoDB and set a default value
+// TODO: obtain this from DynamoDB and set a default value
 func SetTimezoneLocale(location string) {
 	if location == "" {
 		panic("timezone locale should not be empty")

@@ -4,7 +4,7 @@ gcflags := -G=3
 flags := -ldflags=${ldflags} -gcflags=${gcflags}
 
 .PHONY: build
-build: bin vendor fmt credentials
+build: bin clean vendor fmt credentials
 	go build ${flags} -o bin cmd/run/run.go
 	cp credentials.json bin/
 

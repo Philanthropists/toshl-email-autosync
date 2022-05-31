@@ -23,12 +23,26 @@ build-docker: docker-lint clean fmt credentials
 		--build-arg COMMIT=${git-commit} \
 		-t toshl-sync .
 
+registry.json:
+	@[ -z "${TOSHL_SECRETS_LOCATION}" ] && read -p "Where are the secrets?: " TOSHL_SECRETS_LOCATION; \
+	read -p "What registry should I use?: " registry; \
+	cp "$${TOSHL_SECRETS_LOCATION}/$${registry}_registry.json" registry.json
+
+.PHONY: upload-docker
+upload-docker: registry.json
+	awsprofile="$$(cat registry.json | jq -r .awsprofile)"; \
+	registry="$$(cat registry.json | jq -r .registry)"; \
+	aws --profile $${awsprofile} ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $${registry}; \
+	docker tag toshl-sync:latest $${registry}/private-ecr:latest; \
+	docker push $${registry}/private-ecr:latest; \
+	rm -f registry.json
+
 .PHONY: credentials
 credentials: credentials.json
 credentials.json:
 	@[ -z "${TOSHL_SECRETS_LOCATION}" ] && read -p "Where are the secrets?: " TOSHL_SECRETS_LOCATION; \
 	read -p "What credentials should I use?: " cred_file; \
-	cp "$${TOSHL_SECRETS_LOCATION}/$${cred_file}.json" credentials.json
+	cp "$${TOSHL_SECRETS_LOCATION}/$${cred_file}_creds.json" credentials.json
 
 bin:
 	mkdir -p bin
@@ -61,6 +75,7 @@ tidy:
 .PHONY: clean-all
 clean-all: clean
 	rm -f credentials.json
+	rm -f registry.json
 
 .PHONY: clean
 clean:

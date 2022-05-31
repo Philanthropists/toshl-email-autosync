@@ -42,7 +42,8 @@ credentials: credentials.json
 credentials.json:
 	@[ -z "${TOSHL_SECRETS_LOCATION}" ] && read -p "Where are the secrets?: " TOSHL_SECRETS_LOCATION; \
 	read -p "What credentials should I use?: " cred_file; \
-	cp "$${TOSHL_SECRETS_LOCATION}/$${cred_file}_creds.json" credentials.json
+	cp "$${TOSHL_SECRETS_LOCATION}/$${cred_file}_creds.json" credentials.json; \
+	rm -f credentials.json
 
 bin:
 	mkdir -p bin

@@ -19,6 +19,7 @@ type Auth struct {
 	RapidApiKey      string `json:"rapidapi-key"`
 	RapidApiHost     string `json:"rapidapi-host"`
 	ArchiveMailbox   string `json:"archive_mailbox"`
+	Timezone         string `json:"timezone"`
 }
 
 type Currency struct {

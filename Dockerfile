@@ -23,7 +23,7 @@ FROM alpine:3.15.0
 
 WORKDIR /
 
-# Needed for getting America/Bogota Location
+# Needed for getting timezone locale info (i.e. America/Bogota)
 RUN apk add --no-cache tzdata=2022a-r0
 
 COPY credentials.json .

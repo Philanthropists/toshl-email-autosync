@@ -17,16 +17,6 @@ import (
 	"github.com/Philanthropists/toshl-email-autosync/internal/toshl"
 )
 
-var localLocation *time.Location
-
-func init() {
-	var err error
-	localLocation, err = time.LoadLocation("America/Bogota")
-	if err != nil {
-		panic(err)
-	}
-}
-
 func ExtractTransactionInfoFromMessages(msgs []types.BankMessage) ([]*types.TransactionInfo, int64) {
 	log := logger.GetLogger()
 	var failures int64
@@ -122,6 +112,10 @@ func Run(ctx context.Context, auth types.Auth) error {
 			SendNotifications(auth, msg)
 		}
 	}()
+
+	log.Infow("Timezone Locale",
+		"timezone", auth.Timezone)
+	SetTimezoneLocale(auth.Timezone)
 
 	banks := bank.GetBanks()
 

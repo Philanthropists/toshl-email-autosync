@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/Philanthropists/toshl-email-autosync/internal/logger"
 	"github.com/Philanthropists/toshl-email-autosync/internal/sync/common"
@@ -11,6 +12,27 @@ import (
 	"github.com/Philanthropists/toshl-email-autosync/internal/toshl"
 	_toshl "github.com/Philanthropists/toshl-go"
 )
+
+var localLocation *time.Location
+
+// TODO obtain this from DynamoDB and set a default value
+func SetTimezoneLocale(location string) {
+	if location == "" {
+		panic("timezone locale should not be empty")
+	}
+
+	var err error
+	localLocation, err = time.LoadLocation(location)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func checkTimezone() {
+	if localLocation == nil {
+		panic("timezone was not set")
+	}
+}
 
 func GetMappableAccounts(accounts []*toshl.Account) map[string]*toshl.Account {
 	log := logger.GetLogger()
@@ -66,6 +88,8 @@ func CreateEntries(toshlClient toshl.ApiClient, transactions []*types.Transactio
 	const DateFormat = "2006-01-02"
 
 	log := logger.GetLogger()
+
+	checkTimezone()
 
 	var successfulTransactions []*types.TransactionInfo
 	var failedTransactions []*types.TransactionInfo

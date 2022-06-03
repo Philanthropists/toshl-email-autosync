@@ -15,12 +15,12 @@ import (
 	"github.com/Philanthropists/toshl-email-autosync/internal/sync/types"
 )
 
-func shouldRun(ctx context.Context, times []string) bool {
+func shouldRun(ctx context.Context, locale *time.Location, times []string) bool {
 	// TODO: Use DynamoDB to get the last reported date or last stock data
 	const timeLayout = "15:04"
 	const timeframeDifference = 7
 
-	ct, _ := time.Parse(timeLayout, time.Now().Format(timeLayout))
+	ct, _ := time.Parse(timeLayout, time.Now().In(locale).Format(timeLayout))
 
 	for _, timeFrame := range times {
 		fmt.Println("time", times)
@@ -50,8 +50,12 @@ func Run(ctx context.Context, auth types.Auth) error {
 	defer log.Sync()
 
 	stockOptions := auth.StockOptions
+	locale, err := time.LoadLocation(auth.Timezone)
+	if err != nil {
+		return err
+	}
 
-	if !stockOptions.Enabled || !shouldRun(ctx, stockOptions.Times) {
+	if !stockOptions.Enabled || !shouldRun(ctx, locale, stockOptions.Times) {
 		log.Infow("Not getting stock information")
 		return nil
 	}

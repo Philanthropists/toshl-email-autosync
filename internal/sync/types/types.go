@@ -21,11 +21,18 @@ type Auth struct {
 	ArchiveMailbox   string       `json:"archive_mailbox"`
 	Timezone         string       `json:"timezone"`
 	StockOptions     StockOptions `json:"stock_options"`
+	FundOptions      FundOptions  `json:"fund_options"`
 }
 
 type StockOptions struct {
 	Enabled bool     `json:"enabled"`
 	Stocks  []string `json:"stocks"`
+	Times   []string `json:"times"`
+}
+
+type FundOptions struct {
+	Enabled bool     `json:"enabled"`
+	Funds   []string `json:"funds"`
 	Times   []string `json:"times"`
 }
 

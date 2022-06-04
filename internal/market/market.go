@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/Philanthropists/toshl-email-autosync/internal/logger"
+	"github.com/Philanthropists/toshl-email-autosync/internal/market/investment-fund/bancolombia"
+	bancoltypes "github.com/Philanthropists/toshl-email-autosync/internal/market/investment-fund/bancolombia/types"
 	"github.com/Philanthropists/toshl-email-autosync/internal/market/rapidapi"
 	rapidapitypes "github.com/Philanthropists/toshl-email-autosync/internal/market/rapidapi/types"
 	"github.com/Philanthropists/toshl-email-autosync/internal/sync"
@@ -49,6 +51,27 @@ func Run(ctx context.Context, auth types.Auth) error {
 	log := logger.GetLogger()
 	defer log.Sync()
 
+	if auth.TwilioAccountSid == "" {
+		log.Warn("No Twilio Account SID was specified, no stocks or funds are going to be retrieved")
+		return nil
+	}
+
+	err := processStocks(ctx, auth)
+	if err != nil {
+		return err
+	}
+
+	err = processFunds(ctx, auth)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func processStocks(ctx context.Context, auth types.Auth) error {
+	log := logger.GetLogger()
+	defer log.Sync()
 	stockOptions := auth.StockOptions
 	locale, err := time.LoadLocation(auth.Timezone)
 	if err != nil {
@@ -69,9 +92,33 @@ func Run(ctx context.Context, auth types.Auth) error {
 		return err
 	}
 
-	if auth.TwilioAccountSid != "" {
-		sendStockInformation(auth, stocks)
+	sendStockInformation(auth, stocks)
+
+	return nil
+}
+
+func processFunds(ctx context.Context, auth types.Auth) error {
+	log := logger.GetLogger()
+	defer log.Sync()
+	fundOptions := auth.FundOptions
+	locale, err := time.LoadLocation(auth.Timezone)
+	if err != nil {
+		return err
 	}
+
+	if !fundOptions.Enabled || !shouldRun(ctx, locale, fundOptions.Times) {
+		log.Infow("Not getting funds information")
+		return nil
+	}
+
+	fundNames := auth.FundOptions.Funds
+
+	funds, err := getInvestmentFunds(ctx, fundNames)
+	if err != nil {
+		return err
+	}
+
+	sendFundsNotification(auth, funds)
 
 	return nil
 }
@@ -123,4 +170,80 @@ func getStocks(ctx context.Context, key, host string, stocks []string) (map[rapi
 	}
 
 	return values, nil
+}
+
+func getInvestmentFunds(ctx context.Context, funds []string) ([]bancoltypes.InvestmentFund, error) {
+	log := logger.GetLogger()
+	defer log.Sync()
+
+	availableFunds, err := bancolombia.GetAvailableInvestmentFundsBasicInfo()
+	if err != nil {
+		return nil, err
+	}
+
+	fundsMap := map[string]bancoltypes.InvestmentFundBasicInfo{}
+	for _, fund := range availableFunds {
+		fundsMap[fund.Name] = fund
+	}
+
+	fundsInfo := []bancoltypes.InvestmentFund{}
+	errorsFound := []error{}
+	for _, fundName := range funds {
+		fund, err := getInvestmentFundByName(fundsMap, fundName)
+		if err == nil {
+			fundsInfo = append(fundsInfo, fund)
+		} else {
+			errorsFound = append(errorsFound, err)
+		}
+	}
+
+	if len(errorsFound) == len(funds) {
+		return nil, errors.New("no funds were able to be retrieved")
+	}
+
+	if len(errorsFound) > 0 {
+		log.Errorw("Some errors were found downloading funds",
+			"funds", errorsFound)
+	}
+
+	return fundsInfo, nil
+}
+
+func getInvestmentFundByName(fundsMap map[string]bancoltypes.InvestmentFundBasicInfo, fundName string) (bancoltypes.InvestmentFund, error) {
+	fundBasicInfo, ok := fundsMap[fundName]
+	if !ok {
+		return bancoltypes.InvestmentFund{}, fmt.Errorf("[%s] not found in available funds", fundName)
+	}
+
+	fundId := fundBasicInfo.Nit
+	fund, err := bancolombia.GetInvestmentFundById(fundId)
+	if err != nil {
+		return bancoltypes.InvestmentFund{}, err
+	}
+
+	return fund, nil
+}
+
+func sendFundsNotification(auth types.Auth, funds []bancoltypes.InvestmentFund) {
+	const fundFmt string = "[%10s] = week: %.1f%%, month: %.1f%%, year: %.1f%%"
+
+	log := logger.GetLogger()
+	defer log.Sync()
+
+	var fundMsgs []string
+	for _, fund := range funds {
+		name := fund.Name
+		weeklyPercentage := fund.Profitability.Days.WeeklyPercentage
+		monthlyPercentage := fund.Profitability.Days.MonthlyPercentage
+		yearPercentage := fund.Profitability.Years.Current
+		msg := fmt.Sprintf(fundFmt, name, weeklyPercentage, monthlyPercentage, yearPercentage)
+		log.Info(msg)
+
+		fundMsgs = append(fundMsgs, msg)
+	}
+	fundMsgs = append(fundMsgs, "----------------------")
+
+	msg := strings.Join(fundMsgs, "\n")
+
+	sync.SendNotifications(auth, msg)
 }

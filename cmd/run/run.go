@@ -4,65 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
-	"fmt"
 	"io"
-	"log"
 	"os"
 	concurrency "sync"
 
 	"github.com/Philanthropists/toshl-email-autosync/internal/market"
-	"github.com/Philanthropists/toshl-email-autosync/internal/market/investment-fund/bancolombia"
 	"github.com/Philanthropists/toshl-email-autosync/internal/sync"
 	"github.com/Philanthropists/toshl-email-autosync/internal/sync/common"
 	"github.com/Philanthropists/toshl-email-autosync/internal/sync/types"
-
-	toshlclient "github.com/Philanthropists/toshl-go"
 )
 
 const credentialsFile = "credentials.json"
 
 var GitCommit string
-
-func GetInvestmentFunds() {
-	const fundName = "Renta Sostenible Global"
-	list, err := bancolombia.GetAvailableInvestmentFundsBasicInfo()
-	if err != nil {
-		log.Println(err)
-	}
-
-	var fundId bancolombia.InvestmentFundId
-	found := false
-	for _, fundInfo := range list {
-		if fundInfo.Name == fundName {
-			fundId = fundInfo.Nit
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		log.Printf("fund name [%s] not found in list", fundName)
-		return
-	}
-
-	fund, err := bancolombia.GetInvestmentFundById(fundId)
-	if err != nil {
-		log.Println(err)
-	}
-
-	log.Printf("%+v", fund)
-}
-
-func GetToshlAccounts(auth types.Auth) {
-	client := toshlclient.NewClient(auth.ToshlToken, nil)
-
-	accounts, err := client.Accounts(nil)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Printf("%+v\n", accounts)
-}
 
 type Options struct {
 	DryRun bool

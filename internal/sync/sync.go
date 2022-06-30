@@ -150,7 +150,8 @@ func Run(ctx context.Context, auth types.Auth) error {
 	}
 
 	toshlClient := toshl.NewApiClient(auth.ToshlToken)
-	internalCategoryId := CreateInternalCategoryIfAbsent(toshlClient)
+
+	internalCategoryIds := createInternalCategoryIdsIfAbsent(toshlClient)
 
 	accounts, err := toshlClient.GetAccounts()
 	if err != nil {
@@ -169,13 +170,54 @@ func Run(ctx context.Context, auth types.Auth) error {
 		log.Debugf("%s: %s", name, account.Name)
 	}
 
-	status.SuccessfulTxs, status.FailedTxs = CreateEntries(toshlClient, transactions, mappableAccounts, internalCategoryId)
+	cleanTransactionsAccount(transactions, mappableAccounts, auth.ToshlAccountMappings)
+
+	status.SuccessfulTxs, status.FailedTxs = CreateEntries(toshlClient, transactions,
+		mappableAccounts, internalCategoryIds)
 
 	ArchiveEmailsFromSuccessfulTransactions(mailClient, auth.ArchiveMailbox, status.SuccessfulTxs)
-
 	if err := UpdateLastProcessedDate(status.FailedTxs); err != nil {
 		return fmt.Errorf("failed to update last processed date: %s", err)
 	}
 
 	return nil
+}
+
+func cleanTransactionsAccount(transactions []*types.TransactionInfo, mappableAccounts map[string]*toshl.Account, toshlMappings map[string]string) {
+	log := logger.GetLogger()
+	defer log.Sync()
+
+	for _, tx := range transactions {
+		accountName := tx.Account
+		_, ok := mappableAccounts[accountName]
+		if !ok {
+			log.Warnw("transaction is not directly mappable to a toshl account",
+				"accountName", accountName)
+
+			fixTransactionAccountMapping(toshlMappings, accountName, tx)
+		}
+	}
+}
+
+func fixTransactionAccountMapping(toshlMappings map[string]string, accountName string, tx *types.TransactionInfo) {
+	log := logger.GetLogger()
+	defer log.Sync()
+
+	if mapping, found := toshlMappings[accountName]; found {
+		log.Infow("mapping found for transaction account",
+			"accountName", accountName, "mapping", mapping)
+		tx.Account = mapping
+	} else {
+		log.Errorw("mapping not found for transaction",
+			"accountName", accountName)
+	}
+}
+
+func createInternalCategoryIdsIfAbsent(toshlClient toshl.ApiClient) map[types.TransactionType]string {
+	internalCategoryIds := map[types.TransactionType]string{}
+
+	internalCategoryIds[types.Expense] = CreateInternalCategoryIfAbsent(toshlClient, types.Expense)
+	internalCategoryIds[types.Income] = CreateInternalCategoryIfAbsent(toshlClient, types.Income)
+
+	return internalCategoryIds
 }

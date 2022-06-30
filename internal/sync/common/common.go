@@ -8,9 +8,14 @@ import (
 
 var version string
 
-func MatchesAnyRegexp(r []*regexp.Regexp, s string) (bool, *regexp.Regexp) {
+type RegexWithValue[V any] struct {
+	Regexp *regexp.Regexp
+	Value  V
+}
+
+func GenericMatchesAnyRegexp[V any](r []*RegexWithValue[V], s string) (bool, *RegexWithValue[V]) {
 	for _, regex := range r {
-		if regex.Match([]byte(s)) {
+		if regex.Regexp.Match([]byte(s)) {
 			return true, regex
 		}
 	}
@@ -18,16 +23,45 @@ func MatchesAnyRegexp(r []*regexp.Regexp, s string) (bool, *regexp.Regexp) {
 	return false, nil
 }
 
-func ExtractFieldsStringWithRegexp(s string, r *regexp.Regexp) map[string]string {
-	match := r.FindStringSubmatch(s)
+func MatchesAnyRegexp(r []*regexp.Regexp, s string) (bool, *regexp.Regexp) {
+	var rs []*RegexWithValue[bool]
+
+	for _, reg := range r {
+		val := &RegexWithValue[bool]{
+			Regexp: reg,
+			Value:  false,
+		}
+		rs = append(rs, val)
+	}
+
+	res, selected := GenericMatchesAnyRegexp[bool](rs, s)
+	if selected == nil {
+		return false, nil
+	}
+	return res, selected.Regexp
+}
+
+func GenericExtractFieldsStringWithRegexp[V any](s string, r *RegexWithValue[V]) map[string]string {
+	match := r.Regexp.FindStringSubmatch(s)
 	result := make(map[string]string)
-	for i, name := range r.SubexpNames() {
+	for i, name := range r.Regexp.SubexpNames() {
 		if i != 0 && name != "" && i < len(match) {
 			result[name] = match[i]
 		}
 	}
 
 	return result
+}
+
+func ExtractFieldsStringWithRegexp(s string, r *regexp.Regexp) map[string]string {
+	rs := &RegexWithValue[bool]{
+		Regexp: r,
+		Value:  false,
+	}
+
+	res := GenericExtractFieldsStringWithRegexp[bool](s, rs)
+
+	return res
 }
 
 func ContainsAllRequiredFields(fields map[string]string) bool {

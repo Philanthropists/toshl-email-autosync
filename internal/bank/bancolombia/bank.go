@@ -32,28 +32,49 @@ func (b Bancolombia) FilterMessage(msg imaptypes.Message) bool {
 
 	if keep {
 		text := string(msg.RawBody)
-		keep, _ = common.MatchesAnyRegexp(regexMatching, text)
+		keep, _ = common.GenericMatchesAnyRegexp(regexMatching, text)
 	}
 
 	return keep
 }
 
-var regexMatching = []*regexp.Regexp{
-	regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) a (?P<place>.+) desde (?:cta|T\.CRED) \*(?P<account>\d{4})\.`),
-	regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) en (?P<place>[^\.]+)\..+T\.Cred \*(?P<account>\d{4})\.`),
-	regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) en (?P<place>.+)\..+T\.(?:Cred|Deb) \*(?P<account>\d{4})\.`),
-	regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) desde cta \*(?P<account>\d{4}).+cta (?P<place>\d{11,16})\.`),
+var regexMatching = []*common.RegexWithValue[synctypes.TransactionType]{
+	{
+		Regexp: regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) a (?P<place>.+) desde (?:cta|T\.CRED) \*(?P<account>\d{4})\.`),
+		Value:  synctypes.Expense,
+	},
+	{
+		Regexp: regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) en (?P<place>[^\.]+)\..+T\.Cred \*(?P<account>\d{4})\.`),
+		Value:  synctypes.Expense,
+	},
+	{
+		Regexp: regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) en (?P<place>.+)\..+T\.(?:Cred|Deb) \*(?P<account>\d{4})\.`),
+		Value:  synctypes.Expense,
+	},
+	{
+		Regexp: regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) desde cta \*(?P<account>\d{4}).+cta (?P<place>\d{11,16})\.`),
+		Value:  synctypes.Expense,
+	},
+	{
+		Regexp: regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) de pago de (?P<place>[A-Z\s]+) por \$(?P<value>[0-9,\.]+) en su cuenta (?P<account>[A-Z\s]+)\s.+\.`),
+		Value:  synctypes.Income,
+	},
 }
 
 func (b Bancolombia) ExtractTransactionInfoFromMessage(msg imaptypes.Message) (*synctypes.TransactionInfo, error) {
 	text := string(msg.RawBody)
 
-	isFound, selectedRegexp := common.MatchesAnyRegexp(regexMatching, text)
+	isFound, selectedRegexp := common.GenericMatchesAnyRegexp(regexMatching, text)
 	if !isFound {
 		return nil, fmt.Errorf("message did not match any regexp from Bancolombia")
 	}
 
-	result := common.ExtractFieldsStringWithRegexp(text, selectedRegexp)
+	// sanity check
+	if !selectedRegexp.Value.IsValid() {
+		return nil, fmt.Errorf("transaction type is not valid")
+	}
+
+	result := common.GenericExtractFieldsStringWithRegexp(text, selectedRegexp)
 
 	if !common.ContainsAllRequiredFields(result) {
 		return nil, fmt.Errorf("message does not contain all required fields - result [%+v]", result)
@@ -65,12 +86,13 @@ func (b Bancolombia) ExtractTransactionInfoFromMessage(msg imaptypes.Message) (*
 	}
 
 	return &synctypes.TransactionInfo{
-		MsgId:   msg.SeqNum,
-		Type:    result["type"],
-		Place:   result["place"],
-		Value:   value,
-		Account: result["account"],
-		Date:    msg.Envelope.Date,
+		MsgId:           msg.SeqNum,
+		TransactionType: selectedRegexp.Value,
+		Type:            result["type"],
+		Place:           result["place"],
+		Value:           value,
+		Account:         result["account"],
+		Date:            msg.Envelope.Date,
 	}, nil
 }
 

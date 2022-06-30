@@ -42,6 +42,20 @@ func ArchiveEmailsFromSuccessfulTransactions(mailClient imap.MailClient, archive
 		panic(err)
 	}
 
+	assertMailboxExists(mailboxes, archiveMailbox)
+
+	var msgsIds []uint32
+	for _, t := range successfulTransactions {
+		msgsIds = append(msgsIds, t.MsgId)
+	}
+
+	err = mailClient.Move(msgsIds, types.Mailbox(archiveMailbox))
+	if err != nil {
+		panic(err)
+	}
+}
+
+func assertMailboxExists(mailboxes []types.Mailbox, archiveMailbox string) {
 	found := false
 	for _, mailbox := range mailboxes {
 		if string(mailbox) == archiveMailbox {
@@ -52,14 +66,5 @@ func ArchiveEmailsFromSuccessfulTransactions(mailClient imap.MailClient, archive
 
 	if !found {
 		panic("archive mailbox not found " + archiveMailbox)
-	}
-
-	var msgsIds []uint32
-	for _, t := range successfulTransactions {
-		msgsIds = append(msgsIds, t.MsgId)
-	}
-	err = mailClient.Move(msgsIds, types.Mailbox(archiveMailbox))
-	if err != nil {
-		panic(err)
 	}
 }

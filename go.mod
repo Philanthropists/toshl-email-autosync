@@ -1,6 +1,6 @@
 module github.com/Philanthropists/toshl-email-autosync
 
-go 1.17
+go 1.18
 
 require (
 	github.com/Philanthropists/toshl-go v0.1.9

@@ -58,8 +58,15 @@ func GetMappableAccounts(accounts []*toshl.Account) map[string]*toshl.Account {
 	return mapping
 }
 
-func CreateInternalCategoryIfAbsent(toshlClient toshl.ApiClient) string {
-	const categoryName = "PENDING"
+func CreateInternalCategoryIfAbsent(toshlClient toshl.ApiClient, TxType types.TransactionType) string {
+	const categoryNamePrefix = "PENDING_"
+
+	// sanity check
+	if !TxType.IsValid() {
+		panic("transaction type is invalid")
+	}
+
+	categoryName := categoryNamePrefix + strings.ToUpper(TxType.String())
 
 	categories, err := toshlClient.GetCategories()
 	if err != nil {
@@ -74,7 +81,7 @@ func CreateInternalCategoryIfAbsent(toshlClient toshl.ApiClient) string {
 
 	var cat toshl.Category
 	cat.Name = categoryName
-	cat.Type = "expense"
+	cat.Type = TxType.String()
 
 	err = toshlClient.CreateCategory(&cat)
 	if err != nil {
@@ -84,42 +91,81 @@ func CreateInternalCategoryIfAbsent(toshlClient toshl.ApiClient) string {
 	return cat.ID
 }
 
-func CreateEntries(toshlClient toshl.ApiClient, transactions []*types.TransactionInfo, mappableAccounts map[string]*toshl.Account, internalCategoryId string) ([]*types.TransactionInfo, []*types.TransactionInfo) {
-	const DateFormat = "2006-01-02"
-
+func CreateEntries(toshlClient toshl.ApiClient, transactions []*types.TransactionInfo, mappableAccounts map[string]*toshl.Account, internalCategoryIds map[types.TransactionType]string) ([]*types.TransactionInfo, []*types.TransactionInfo) {
 	log := logger.GetLogger()
 
 	checkTimezone()
 
 	var successfulTransactions []*types.TransactionInfo
 	var failedTransactions []*types.TransactionInfo
-	for _, t := range transactions {
-		account, ok := mappableAccounts[t.Account]
-		if !ok {
-			continue
-		}
+	for _, tx := range transactions {
+		newEntry, err := createEntry(toshlClient, tx, mappableAccounts, internalCategoryIds)
 
-		var newEntry toshl.Entry
-		newEntry.Amount = -*t.Value.Rate // negative because it is an expense
-		newEntry.Currency = _toshl.Currency{
-			Code: "COP",
-		}
-		newEntry.Date = t.Date.In(localLocation).Format(DateFormat)
-		description := fmt.Sprintf("** %s de %s", t.Type, t.Place)
-		newEntry.Description = &description
-		newEntry.Account = account.ID
-		newEntry.Category = internalCategoryId
-
-		err := toshlClient.CreateEntry(&newEntry)
 		if err != nil {
-			log.Errorf("Failed to create entry for transaction [%+v | %+v]: %s\n", newEntry, t, err)
-			failedTransactions = append(failedTransactions, t)
+			log.Errorf("Failed to create entry for transaction [%+v | %+v]: %s\n", newEntry, tx, err)
+			failedTransactions = append(failedTransactions, tx)
 		} else {
 			log.Infow("Created entry successfully",
 				"entry", newEntry)
-			successfulTransactions = append(successfulTransactions, t)
+			successfulTransactions = append(successfulTransactions, tx)
 		}
 	}
 
 	return successfulTransactions, failedTransactions
+}
+
+func createEntry(toshlClient toshl.ApiClient, tx *types.TransactionInfo, mappableAccounts map[string]*toshl.Account, internalCategoryIds map[types.TransactionType]string) (*toshl.Entry, error) {
+	const DateFormat = "2006-01-02"
+
+	account, err := getAccountFromMappableAccounts(mappableAccounts, tx.Account)
+	if err != nil {
+		return nil, err
+	}
+
+	txType := tx.TransactionType
+	internalCategoryId, err := getInternalCategoryIdFromTxType(internalCategoryIds, txType)
+	if err != nil {
+		return nil, err
+	}
+
+	var newEntry toshl.Entry
+	newEntry.Amount = *tx.Value.Rate
+	if txType == types.Expense {
+		newEntry.Amount *= -1 // negative if it is an expense
+	}
+
+	newEntry.Currency = _toshl.Currency{
+		Code: "COP",
+	}
+
+	newEntry.Date = tx.Date.In(localLocation).Format(DateFormat)
+	description := fmt.Sprintf("** %s de %s", tx.Type, tx.Place)
+	newEntry.Description = &description
+	newEntry.Account = account.ID
+	newEntry.Category = internalCategoryId
+
+	err = toshlClient.CreateEntry(&newEntry)
+	if err != nil {
+		return nil, err
+	}
+
+	return &newEntry, nil
+}
+
+func getAccountFromMappableAccounts(mappableAccounts map[string]*toshl.Account, accountName string) (*toshl.Account, error) {
+	account, ok := mappableAccounts[accountName]
+	if !ok {
+		return nil, fmt.Errorf(`could not find account [%s] in mappable accounts`, accountName)
+	}
+
+	return account, nil
+}
+
+func getInternalCategoryIdFromTxType(internalCategoryIds map[types.TransactionType]string, txType types.TransactionType) (string, error) {
+	internalCategoryId, ok := internalCategoryIds[txType]
+	if !ok {
+		return "", fmt.Errorf(`could not get internal category id for [%s]`, txType)
+	}
+
+	return internalCategoryId, nil
 }

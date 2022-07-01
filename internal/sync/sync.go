@@ -185,7 +185,6 @@ func Run(ctx context.Context, auth types.Auth) error {
 
 func cleanTransactionsAccount(transactions []*types.TransactionInfo, mappableAccounts map[string]*toshl.Account, accountMappings map[string]types.AccountMapping) {
 	log := logger.GetLogger()
-	defer log.Sync()
 
 	for _, tx := range transactions {
 		accountName := tx.Account

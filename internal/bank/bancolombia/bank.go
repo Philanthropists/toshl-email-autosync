@@ -11,7 +11,10 @@ import (
 	synctypes "github.com/Philanthropists/toshl-email-autosync/internal/sync/types"
 )
 
-type Bancolombia struct {
+type Bancolombia struct{}
+
+func (b Bancolombia) String() string {
+	return "Bancolombia"
 }
 
 func (b Bancolombia) FilterMessage(msg imaptypes.Message) bool {
@@ -63,6 +66,10 @@ var regexMatching = []*common.RegexWithValue[synctypes.TransactionType]{
 		Regexp: regexp.MustCompile(`Bancolombia te informa (?P<type>\w+) transferencia de (?P<place>[A-Z\s]+) por \$(?P<value>[0-9,\.]+) en la cuenta \*(?P<account>[0-9]+)\.`),
 		Value:  synctypes.Income,
 	},
+	{
+		Regexp: regexp.MustCompile(`Bancolombia le informa un (?P<type>\w+) (?P<place>[\w\s]+) por \$(?P<value>[0-9,\.]+) en su Cuenta (?P<account>\w+)\.`),
+		Value:  synctypes.Income,
+	},
 }
 
 func (b Bancolombia) ExtractTransactionInfoFromMessage(msg imaptypes.Message) (*synctypes.TransactionInfo, error) {
@@ -90,6 +97,7 @@ func (b Bancolombia) ExtractTransactionInfoFromMessage(msg imaptypes.Message) (*
 	}
 
 	return &synctypes.TransactionInfo{
+		Bank:            b,
 		MsgId:           msg.SeqNum,
 		TransactionType: selectedRegexp.Value,
 		Type:            result["type"],

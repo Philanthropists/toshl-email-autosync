@@ -170,7 +170,7 @@ func Run(ctx context.Context, auth types.Auth) error {
 		log.Debugf("%s: %s", name, account.Name)
 	}
 
-	cleanTransactionsAccount(transactions, mappableAccounts, auth.ToshlAccountMappings)
+	cleanTransactionsAccount(transactions, mappableAccounts, auth.AccountMappings)
 
 	status.SuccessfulTxs, status.FailedTxs = CreateEntries(toshlClient, transactions,
 		mappableAccounts, internalCategoryIds)
@@ -183,7 +183,7 @@ func Run(ctx context.Context, auth types.Auth) error {
 	return nil
 }
 
-func cleanTransactionsAccount(transactions []*types.TransactionInfo, mappableAccounts map[string]*toshl.Account, toshlMappings map[string]string) {
+func cleanTransactionsAccount(transactions []*types.TransactionInfo, mappableAccounts map[string]*toshl.Account, accountMappings map[string]types.AccountMapping) {
 	log := logger.GetLogger()
 	defer log.Sync()
 
@@ -194,16 +194,25 @@ func cleanTransactionsAccount(transactions []*types.TransactionInfo, mappableAcc
 			log.Warnw("transaction is not directly mappable to a toshl account",
 				"accountName", accountName)
 
-			fixTransactionAccountMapping(toshlMappings, accountName, tx)
+			tryToFixTransactionAccountMapping(accountMappings, accountName, tx)
 		}
 	}
 }
 
-func fixTransactionAccountMapping(toshlMappings map[string]string, accountName string, tx *types.TransactionInfo) {
+func tryToFixTransactionAccountMapping(accountMappings map[string]types.AccountMapping, accountName string, tx *types.TransactionInfo) {
 	log := logger.GetLogger()
-	defer log.Sync()
 
-	if mapping, found := toshlMappings[accountName]; found {
+	bank := tx.Bank.String()
+	bankMapping, found := accountMappings[bank]
+	if !found {
+		log.Errorw("mapping not found for transaction bank",
+			"accountName", accountName, "bank", bank)
+		return
+	}
+
+	fmt.Println(bankMapping)
+
+	if mapping, found := bankMapping[accountName]; found {
 		log.Infow("mapping found for transaction account",
 			"accountName", accountName, "mapping", mapping)
 		tx.Account = mapping

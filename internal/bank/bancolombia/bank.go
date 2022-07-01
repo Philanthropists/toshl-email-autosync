@@ -59,6 +59,10 @@ var regexMatching = []*common.RegexWithValue[synctypes.TransactionType]{
 		Regexp: regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) de pago de (?P<place>[A-Z\s]+) por \$(?P<value>[0-9,\.]+) en su cuenta (?P<account>[A-Z\s]+)\s.+\.`),
 		Value:  synctypes.Income,
 	},
+	{
+		Regexp: regexp.MustCompile(`Bancolombia te informa (?P<type>\w+) transferencia de (?P<place>[A-Z\s]+) por \$(?P<value>[0-9,\.]+) en la cuenta \*(?P<account>[0-9]+)\.`),
+		Value:  synctypes.Income,
+	},
 }
 
 func (b Bancolombia) ExtractTransactionInfoFromMessage(msg imaptypes.Message) (*synctypes.TransactionInfo, error) {

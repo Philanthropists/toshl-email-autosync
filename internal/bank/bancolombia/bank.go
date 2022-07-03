@@ -55,7 +55,7 @@ var regexMatching = []*common.RegexWithValue[synctypes.TransactionType]{
 		Value:  synctypes.Expense,
 	},
 	{
-		Regexp: regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) desde cta \*(?P<account>\d{4}).+cta (?P<place>\d{11,16})\.`),
+		Regexp: regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) desde cta \*(?P<account>\d{4}).+cta (?P<place>\d{9,16})\.`),
 		Value:  synctypes.Expense,
 	},
 	{

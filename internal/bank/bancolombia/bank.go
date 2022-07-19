@@ -59,6 +59,10 @@ var regexMatching = []*common.RegexWithValue[synctypes.TransactionType]{
 		Value:  synctypes.Expense,
 	},
 	{
+		Regexp: regexp.MustCompile(`Realizaste una (?P<type>\w+) con QR por \$(?P<value>[0-9,\.]+), desde cta \*(?P<account>\d{4}) a cta (?P<place>\d{9,16})\.`),
+		Value:  synctypes.Expense,
+	},
+	{
 		Regexp: regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) de pago de (?P<place>[A-Z\s]+) por \$(?P<value>[0-9,\.]+) en su cuenta (?P<account>[A-Z\s]+)\s.+\.`),
 		Value:  synctypes.Income,
 	},

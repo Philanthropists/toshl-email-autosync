@@ -30,6 +30,11 @@ func (b Bancolombia) FilterMessage(msg imaptypes.Message) bool {
 				keep = true
 				break
 			}
+
+			if from == "alertasynotificaciones@bancolombia.com.co" {
+				keep = true
+				break
+			}
 		}
 	}
 

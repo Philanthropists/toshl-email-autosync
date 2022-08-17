@@ -14,7 +14,6 @@ COPY . .
 RUN GOOS=${GOOS} GOARCH=${GOARCH} CGO_ENABLED=${CGO_ENABLED} \
 		 go build \
 		 -ldflags="-s -w -X main.GitCommit=${COMMIT}" \
-		 -gcflags=-G=3 \
 		 -o ${LOC}/main cmd/aws-lambda/main.go
 
 # ---

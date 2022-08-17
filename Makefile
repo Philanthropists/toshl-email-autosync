@@ -1,6 +1,6 @@
 git-commit := $(shell git rev-list -1 HEAD)
 ldflags := "-s -w -X main.GitCommit=${git-commit}"
-gcflags := -G=3
+gcflags := ""
 flags := -ldflags=${ldflags} -gcflags=${gcflags}
 
 docker-build-push: docker-build docker-push

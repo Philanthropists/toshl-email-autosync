@@ -3,7 +3,6 @@ package imap
 import (
 	"errors"
 	"io"
-	"io/ioutil"
 	"sync"
 	"time"
 
@@ -169,7 +168,7 @@ func getMessageBody(_msg *_imap.Message) ([]byte, error) {
 		switch p.Header.(type) {
 		case *mail.InlineHeader:
 			// This is the message's text (can be plain-text or HTML)
-			body, _ = ioutil.ReadAll(p.Body)
+			body, _ = io.ReadAll(p.Body)
 		}
 	}
 

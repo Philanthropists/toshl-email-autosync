@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
+	"os"
 
 	"github.com/Philanthropists/toshl-email-autosync/internal/market/rapidapi/types"
 )
@@ -46,7 +46,7 @@ type stockValue struct {
 }
 
 func (api *rapidApiImpl) GetCredentialsFromFile(filename string) error {
-	b, err := ioutil.ReadFile(filename)
+	b, err := os.ReadFile(filename)
 	if err != nil {
 		return fmt.Errorf("unable to read API keys from file: %w", err)
 	}

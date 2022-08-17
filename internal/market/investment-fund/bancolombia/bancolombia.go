@@ -3,7 +3,7 @@ package bancolombia
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 
 	"github.com/Philanthropists/toshl-email-autosync/internal/market/investment-fund/bancolombia/types"
@@ -31,7 +31,7 @@ func doGetRequest(url string) ([]byte, error) {
 	}
 	defer response.Body.Close()
 
-	body, err := ioutil.ReadAll(response.Body)
+	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		return nil, err
 	}

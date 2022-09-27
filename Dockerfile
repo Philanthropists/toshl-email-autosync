@@ -18,12 +18,21 @@ RUN GOOS=${GOOS} GOARCH=${GOARCH} CGO_ENABLED=${CGO_ENABLED} \
 
 # ---
 
+FROM builder as tests
+
+RUN go test -v ./... && \
+		touch /empty
+
+# ---
+
 FROM alpine:3.16.0
 
 WORKDIR /
 
+COPY --from=tests /empty .
+
 # Needed for getting timezone locale info (i.e. America/Bogota)
-RUN apk add --no-cache tzdata=2022a-r0
+RUN apk add --no-cache tzdata=2022c-r0
 
 COPY --from=builder /usr/local/bin/main ./main
 COPY credentials.json .

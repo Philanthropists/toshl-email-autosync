@@ -34,7 +34,7 @@ func MatchesAnyRegexp(r []*regexp.Regexp, s string) (bool, *regexp.Regexp) {
 		rs = append(rs, val)
 	}
 
-	res, selected := GenericMatchesAnyRegexp[bool](rs, s)
+	res, selected := GenericMatchesAnyRegexp(rs, s)
 	if selected == nil {
 		return false, nil
 	}

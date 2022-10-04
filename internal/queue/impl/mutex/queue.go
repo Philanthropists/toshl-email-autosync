@@ -6,12 +6,12 @@ import (
 )
 
 type mutexFifoQueue[T any] struct {
-	MaxSize uint
+	MaxSize int
 	Store   []*T
 	Mutex   *sync.Mutex
 }
 
-func CreateQueue[T any](maxsize uint) *mutexFifoQueue[T] {
+func CreateQueue[T any](maxsize int) *mutexFifoQueue[T] {
 	return &mutexFifoQueue[T]{
 		MaxSize: maxsize,
 		Mutex:   &sync.Mutex{},
@@ -22,7 +22,7 @@ func (q *mutexFifoQueue[T]) PushBack(e *T) bool {
 	q.Mutex.Lock()
 	defer q.Mutex.Unlock()
 
-	if q.MaxSize > 0 && uint(len(q.Store)) == q.MaxSize {
+	if q.MaxSize > 0 && len(q.Store) == q.MaxSize {
 		return false
 	}
 
@@ -45,10 +45,10 @@ func (q *mutexFifoQueue[T]) Pop() (*T, error) {
 	return topElement, nil
 }
 
-func (q *mutexFifoQueue[T]) Size() uint {
+func (q *mutexFifoQueue[T]) Size() int {
 	q.Mutex.Lock()
 	defer q.Mutex.Unlock()
-	return uint(len(q.Store))
+	return len(q.Store)
 }
 
 func (q *mutexFifoQueue[T]) IsEmpty() bool {

@@ -3,7 +3,7 @@ package queue
 type FIFOQueue[T any] interface {
 	PushBack(*T) bool
 	Pop() (*T, error)
-	Size() uint
+	Size() int
 	IsEmpty() bool
 	IsFull() bool
 }

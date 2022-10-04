@@ -9,10 +9,10 @@ import (
 )
 
 type Client interface {
-	SendSms(from, to, msg string) (string, error)
+	SendMsg(from, to, msg string) (string, error)
 }
 
-func NewClient(accountSid, authToken string) (*ClientImpl, error) {
+func NewClient(accountSid, authToken string) (*twilioClient, error) {
 	if accountSid == "" || authToken == "" {
 		return nil, errors.New("account sid and auth token cannot be empty")
 	}
@@ -26,14 +26,14 @@ func NewClient(accountSid, authToken string) (*ClientImpl, error) {
 		panic("twilio client is nil, this is unexpected")
 	}
 
-	return &ClientImpl{client: client}, nil
+	return &twilioClient{client: client}, nil
 }
 
-type ClientImpl struct {
+type twilioClient struct {
 	client *_twilio.RestClient
 }
 
-func (c ClientImpl) SendSms(from, to, msg string) (string, error) {
+func (c twilioClient) SendMsg(from, to, msg string) (string, error) {
 	if from == "" || to == "" || msg == "" {
 		return "", errors.New("none of the parameters can be empty")
 	}

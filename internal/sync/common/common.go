@@ -90,5 +90,8 @@ func PrintVersion(commit string) {
 }
 
 func GetVersion() string {
+	if version == "" {
+		return "development"
+	}
 	return version
 }

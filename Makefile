@@ -1,5 +1,5 @@
 git-commit := $(shell git rev-list -1 HEAD)
-ldflags := "-s -w -X main.GitCommit=${git-commit}"
+ldflags := "-s -w"
 gcflags := ""
 flags := -ldflags=${ldflags} -gcflags=${gcflags}
 

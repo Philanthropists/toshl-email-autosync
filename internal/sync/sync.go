@@ -12,9 +12,11 @@ import (
 	"github.com/Philanthropists/toshl-email-autosync/internal/bank"
 	"github.com/Philanthropists/toshl-email-autosync/internal/datasource/imap"
 	"github.com/Philanthropists/toshl-email-autosync/internal/logger"
+	"github.com/Philanthropists/toshl-email-autosync/internal/notifications"
 	"github.com/Philanthropists/toshl-email-autosync/internal/sync/common"
 	"github.com/Philanthropists/toshl-email-autosync/internal/sync/types"
 	"github.com/Philanthropists/toshl-email-autosync/internal/toshl"
+	"github.com/Philanthropists/toshl-email-autosync/internal/twilio"
 )
 
 func ExtractTransactionInfoFromMessages(msgs []types.BankMessage) ([]*types.TransactionInfo, int64) {
@@ -59,7 +61,7 @@ type txsStatus struct {
 }
 
 func notificationString(success, failures []*types.TransactionInfo, parseFails int64) string {
-	versionInfo := common.GetVersion()[:4]
+	versionInfo := common.GetVersion()[:3]
 	msg := fmt.Sprintf(notificationFormat, versionInfo, len(success), len(failures), parseFails)
 
 	p := message.NewPrinter(language.English)
@@ -90,11 +92,40 @@ func notificationString(success, failures []*types.TransactionInfo, parseFails i
 	return strings.Join(status, "\n")
 }
 
+func CreateNotificationsClient(auth types.Auth) (notifications.NotificationsClient, error) {
+	log := logger.GetLogger()
+	defer log.Sync()
+
+	accountSid := auth.TwilioAccountSid
+	authToken := auth.TwilioAuthToken
+	fromNumber := auth.TwilioFromNumber
+	toNumber := auth.TwilioToNumber
+
+	twilioClient, err := twilio.NewClient(accountSid, authToken)
+	if err != nil {
+		log.Errorw("could not instantiate twilio client",
+			"error", err)
+		return nil, err
+	}
+
+	return notifications.CreateFixedClient(twilioClient, fromNumber, toNumber)
+}
+
 func Run(ctx context.Context, auth types.Auth) error {
 	var status txsStatus
 
 	log := logger.GetLogger()
 	defer log.Sync()
+
+	notifClient, err := CreateNotificationsClient(auth)
+	if err != nil {
+		log.Errorf("could not create notifications client: %v", err)
+	}
+	defer notifications.Close()
+
+	if err := notifications.SetNotificationsClient(notifClient); err != nil {
+		log.Errorf("could not set notifications client: %v", err)
+	}
 
 	defer func() {
 		log.Infow("Synced transactions",
@@ -107,9 +138,9 @@ func Run(ctx context.Context, auth types.Auth) error {
 		shouldNotify = shouldNotify || len(status.FailedTxs) > 0
 		shouldNotify = shouldNotify || len(status.SuccessfulTxs) > 0
 
-		if shouldNotify && auth.TwilioAccountSid != "" {
+		if shouldNotify {
 			msg := notificationString(status.SuccessfulTxs, status.FailedTxs, status.ParseFailures)
-			SendNotifications(auth, msg)
+			_ = notifications.PushNotification(msg)
 		}
 	}()
 

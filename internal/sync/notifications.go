@@ -21,7 +21,7 @@ func SendNotifications(auth types.Auth, msg string) {
 		return
 	}
 
-	_, err = client.SendSms(fromNumber, toNumber, msg)
+	_, err = client.SendMsg(fromNumber, toNumber, msg)
 	if err != nil {
 		log.Errorw("an error ocurred when sending notification sms",
 			"error", err)

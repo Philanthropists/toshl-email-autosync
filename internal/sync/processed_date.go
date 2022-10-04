@@ -2,6 +2,7 @@ package sync
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/Philanthropists/toshl-email-autosync/internal/dynamodb"
@@ -10,35 +11,50 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
+const OverrideLasProcessedDateEnvName = "OVERRIDE_LAST_PROC_DATE"
+
 func GetLastProcessedDate() time.Time {
-	logger := logger.GetLogger()
+	log := logger.GetLogger()
+
+	if dateStr := os.Getenv(OverrideLasProcessedDateEnvName); dateStr != "" {
+		const dateFormat = "2006-01-02"
+
+		selectedDate, err := time.Parse(dateFormat, dateStr)
+		if err == nil {
+			log.Infof("Date override: %s", dateStr)
+			return selectedDate
+		} else {
+			log.Errorf("Override is set [%s], but it is invalid", dateStr)
+		}
+	}
+
 	const dateField = "LastProcessedDate"
 	const tableName = "toshl-data"
 	defaultDate := time.Now().Add(-30 * 24 * time.Hour) // from 1 month in the past by default
 
 	var selectedDate time.Time
 	defer func() {
-		logger.Infow("selected date",
+		log.Infow("selected date",
 			"date", selectedDate.Format(time.RFC822Z))
 	}()
 
 	const region = "us-east-1"
 	client, err := dynamodb.NewClient(region)
 	if err != nil {
-		logger.Fatalw("error creating dynamodb client",
+		log.Fatalw("error creating dynamodb client",
 			"error", err)
 	}
 
 	res, err := client.Scan(tableName)
 	if err != nil || len(res) != 1 {
 		selectedDate = defaultDate
-		logger.Errorw("connection to dynamodb as unsuccessful",
+		log.Errorw("connection to dynamodb as unsuccessful",
 			"error", err)
 	}
 
 	if len(res) != 1 {
 		selectedDate = defaultDate
-		logger.Warnw("something is wrong, the number of items retrieved was not 1",
+		log.Warnw("something is wrong, the number of items retrieved was not 1",
 			"response", res,
 			"len", len(res))
 	}
@@ -51,7 +67,7 @@ func GetLastProcessedDate() time.Time {
 	value, ok := resValue[dateField]
 	if !ok {
 		selectedDate = defaultDate
-		logger.Warnw("field is not defined in dynamodb item",
+		log.Warnw("field is not defined in dynamodb item",
 			"field", dateField)
 	}
 

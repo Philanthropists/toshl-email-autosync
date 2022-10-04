@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Philanthropists/toshl-email-autosync/internal/logger"
+	"github.com/Philanthropists/toshl-email-autosync/internal/notifications"
 	"github.com/Philanthropists/toshl-email-autosync/internal/sync/common"
 	"github.com/Philanthropists/toshl-email-autosync/internal/sync/types"
 	"github.com/Philanthropists/toshl-email-autosync/internal/toshl"
@@ -103,6 +104,7 @@ func CreateEntries(toshlClient toshl.ApiClient, transactions []*types.Transactio
 
 		if err != nil {
 			log.Errorf("Failed to create entry for transaction [%+v | %+v]: %s\n", newEntry, tx, err)
+			_ = notifications.PushNotification(fmt.Sprintf("ERROR: %s", err))
 			failedTransactions = append(failedTransactions, tx)
 		} else {
 			log.Infow("Created entry successfully",
@@ -155,7 +157,7 @@ func createEntry(toshlClient toshl.ApiClient, tx *types.TransactionInfo, mappabl
 func getAccountFromMappableAccounts(mappableAccounts map[string]*toshl.Account, accountName string) (*toshl.Account, error) {
 	account, ok := mappableAccounts[accountName]
 	if !ok {
-		return nil, fmt.Errorf(`could not find account [%s] in mappable accounts`, accountName)
+		return nil, fmt.Errorf(`could not find account [%s] in available accounts`, accountName)
 	}
 
 	return account, nil

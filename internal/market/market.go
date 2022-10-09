@@ -13,7 +13,7 @@ import (
 	bancoltypes "github.com/Philanthropists/toshl-email-autosync/internal/market/investment-fund/bancolombia/types"
 	"github.com/Philanthropists/toshl-email-autosync/internal/market/rapidapi"
 	rapidapitypes "github.com/Philanthropists/toshl-email-autosync/internal/market/rapidapi/types"
-	"github.com/Philanthropists/toshl-email-autosync/internal/sync"
+	"github.com/Philanthropists/toshl-email-autosync/internal/notifications"
 	"github.com/Philanthropists/toshl-email-autosync/internal/sync/types"
 )
 
@@ -49,7 +49,6 @@ func inTimeSpan(start, end, check time.Time) bool {
 
 func Run(ctx context.Context, auth types.Auth) error {
 	log := logger.GetLogger()
-	defer log.Sync()
 
 	if auth.TwilioAccountSid == "" {
 		log.Warn("No Twilio Account SID was specified, no stocks or funds are going to be retrieved")
@@ -71,7 +70,6 @@ func Run(ctx context.Context, auth types.Auth) error {
 
 func processStocks(ctx context.Context, auth types.Auth) error {
 	log := logger.GetLogger()
-	defer log.Sync()
 	stockOptions := auth.StockOptions
 	locale, err := time.LoadLocation(auth.Timezone)
 	if err != nil {
@@ -92,14 +90,13 @@ func processStocks(ctx context.Context, auth types.Auth) error {
 		return err
 	}
 
-	sendStockInformation(auth, stocks)
+	sendStockInformation(stocks)
 
 	return nil
 }
 
 func processFunds(ctx context.Context, auth types.Auth) error {
 	log := logger.GetLogger()
-	defer log.Sync()
 	fundOptions := auth.FundOptions
 	locale, err := time.LoadLocation(auth.Timezone)
 	if err != nil {
@@ -118,16 +115,15 @@ func processFunds(ctx context.Context, auth types.Auth) error {
 		return err
 	}
 
-	sendFundsNotification(auth, funds)
+	sendFundsNotification(funds)
 
 	return nil
 }
 
-func sendStockInformation(auth types.Auth, stocks map[rapidapitypes.Stock]float64) {
+func sendStockInformation(stocks map[rapidapitypes.Stock]float64) {
 	const stockFmt string = "(%5s) = $%.2f USD"
 
 	log := logger.GetLogger()
-	defer log.Sync()
 
 	var stockMsgs []string
 	for name, value := range stocks {
@@ -140,12 +136,13 @@ func sendStockInformation(auth types.Auth, stocks map[rapidapitypes.Stock]float6
 
 	msg := strings.Join(stockMsgs, "\n")
 
-	sync.SendNotifications(auth, msg)
+	if err := notifications.PushNotification(msg); err != nil {
+		log.Errorf("error pushing notification: %v", err)
+	}
 }
 
 func getStocks(ctx context.Context, key, host string, stocks []string) (map[rapidapitypes.Stock]float64, error) {
 	log := logger.GetLogger()
-	defer log.Sync()
 
 	api, err := rapidapi.GetMarketClient(key, host)
 	if err != nil {
@@ -174,7 +171,6 @@ func getStocks(ctx context.Context, key, host string, stocks []string) (map[rapi
 
 func getInvestmentFunds(ctx context.Context, funds []string) ([]bancoltypes.InvestmentFund, error) {
 	log := logger.GetLogger()
-	defer log.Sync()
 
 	availableFunds, err := bancolombia.GetAvailableInvestmentFundsBasicInfo()
 	if err != nil {
@@ -224,11 +220,10 @@ func getInvestmentFundByName(fundsMap map[string]bancoltypes.InvestmentFundBasic
 	return fund, nil
 }
 
-func sendFundsNotification(auth types.Auth, funds []bancoltypes.InvestmentFund) {
+func sendFundsNotification(funds []bancoltypes.InvestmentFund) {
 	const fundFmt string = "[%10s] = week: %.1f%%, month: %.1f%%, year: %.1f%%"
 
 	log := logger.GetLogger()
-	defer log.Sync()
 
 	var fundMsgs []string
 	for _, fund := range funds {
@@ -245,5 +240,7 @@ func sendFundsNotification(auth types.Auth, funds []bancoltypes.InvestmentFund) 
 
 	msg := strings.Join(fundMsgs, "\n")
 
-	sync.SendNotifications(auth, msg)
+	if err := notifications.PushNotification(msg); err != nil {
+		log.Errorf("error pushing notification: %v", err)
+	}
 }

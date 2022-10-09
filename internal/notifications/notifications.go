@@ -43,7 +43,6 @@ func SetNotificationsClient(ns NotificationsClient) error {
 
 func flushNotifications() {
 	log := logger.GetLogger()
-	defer log.Sync()
 
 	createNotificationsStore()
 

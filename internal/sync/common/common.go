@@ -83,7 +83,6 @@ func ContainsAllRequiredFields(fields map[string]string) bool {
 
 func PrintVersion(commit string) {
 	log := logger.GetLogger()
-	defer log.Sync()
 
 	log.Infof("Commit version: %s", commit)
 	version = commit

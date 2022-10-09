@@ -16,7 +16,6 @@ import (
 	"github.com/Philanthropists/toshl-email-autosync/internal/sync/common"
 	"github.com/Philanthropists/toshl-email-autosync/internal/sync/types"
 	"github.com/Philanthropists/toshl-email-autosync/internal/toshl"
-	"github.com/Philanthropists/toshl-email-autosync/internal/twilio"
 )
 
 func ExtractTransactionInfoFromMessages(msgs []types.BankMessage) ([]*types.TransactionInfo, int64) {
@@ -92,40 +91,9 @@ func notificationString(success, failures []*types.TransactionInfo, parseFails i
 	return strings.Join(status, "\n")
 }
 
-func CreateNotificationsClient(auth types.Auth) (notifications.NotificationsClient, error) {
-	log := logger.GetLogger()
-	defer log.Sync()
-
-	accountSid := auth.TwilioAccountSid
-	authToken := auth.TwilioAuthToken
-	fromNumber := auth.TwilioFromNumber
-	toNumber := auth.TwilioToNumber
-
-	twilioClient, err := twilio.NewClient(accountSid, authToken)
-	if err != nil {
-		log.Errorw("could not instantiate twilio client",
-			"error", err)
-		return nil, err
-	}
-
-	return notifications.CreateFixedClient(twilioClient, fromNumber, toNumber)
-}
-
 func Run(ctx context.Context, auth types.Auth) error {
 	var status txsStatus
-
 	log := logger.GetLogger()
-	defer log.Sync()
-
-	notifClient, err := CreateNotificationsClient(auth)
-	if err != nil {
-		log.Errorf("could not create notifications client: %v", err)
-	}
-	defer notifications.Close()
-
-	if err := notifications.SetNotificationsClient(notifClient); err != nil {
-		log.Errorf("could not set notifications client: %v", err)
-	}
 
 	defer func() {
 		log.Infow("Synced transactions",

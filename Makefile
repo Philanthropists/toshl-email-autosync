@@ -6,12 +6,12 @@ flags := -ldflags=${ldflags} -gcflags=${gcflags}
 docker-build-push: docker-build docker-push
 
 .PHONY: build
-build: bin clean vendor fmt credentials
+build: bin clean vendor fmt credentials test
 	go build ${flags} -o bin cmd/run/run.go
 	cp credentials.json bin/
 
 .PHONY: build-for-lambda
-build-for-lambda: bin clean vendor fmt credentials
+build-for-lambda: bin clean vendor fmt credentials test
 	GOOS=linux \
 	GOARCH=amd64 \
 	CGO_ENABLED=0 \
@@ -19,12 +19,20 @@ build-for-lambda: bin clean vendor fmt credentials
 	cp credentials.json bin/
 
 .PHONY: build-docker
-docker-build: docker-lint clean fmt credentials
+docker-build: docker-lint clean fmt credentials test
 	docker buildx build \
 		--platform linux/amd64 \
 		--build-arg COMMIT=${git-commit} \
 		-t toshl-sync .; \
 	make clean
+
+.PHONY: test
+test:
+	go test -cover -coverprofile cover.out ./...
+
+.PHONY: coverage
+coverage: test
+	go tool cover -html cover.out
 
 .subject:
 	@read -p "What subject should I use?: " subject; \

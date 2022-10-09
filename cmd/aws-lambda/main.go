@@ -7,10 +7,13 @@ import (
 	"os"
 	concurrency "sync"
 
+	"github.com/Philanthropists/toshl-email-autosync/internal/logger"
 	"github.com/Philanthropists/toshl-email-autosync/internal/market"
+	"github.com/Philanthropists/toshl-email-autosync/internal/notifications"
 	"github.com/Philanthropists/toshl-email-autosync/internal/sync"
 	"github.com/Philanthropists/toshl-email-autosync/internal/sync/common"
 	"github.com/Philanthropists/toshl-email-autosync/internal/sync/types"
+	"github.com/Philanthropists/toshl-email-autosync/internal/twilio"
 	"github.com/aws/aws-lambda-go/lambda"
 )
 
@@ -29,7 +32,45 @@ func getAuth(rawAuth []byte) (types.Auth, error) {
 	return auth, nil
 }
 
+func CreateNotificationsClient(auth types.Auth) (notifications.NotificationsClient, error) {
+	log := logger.GetLogger()
+
+	accountSid := auth.TwilioAccountSid
+	authToken := auth.TwilioAuthToken
+	fromNumber := auth.TwilioFromNumber
+	toNumber := auth.TwilioToNumber
+
+	twilioClient, err := twilio.NewClient(accountSid, authToken)
+	if err != nil {
+		log.Errorw("could not instantiate twilio client",
+			"error", err)
+		return nil, err
+	}
+
+	return notifications.CreateFixedClient(twilioClient, fromNumber, toNumber)
+}
+
+func SetupNotifications(auth types.Auth) func() {
+	log := logger.GetLogger()
+
+	notifClient, err := CreateNotificationsClient(auth)
+	if err != nil {
+		log.Errorf("could not create notifications client: %v", err)
+	}
+
+	if err := notifications.SetNotificationsClient(notifClient); err != nil {
+		log.Errorf("could not set notifications client: %v", err)
+	}
+
+	return func() {
+		notifications.Close()
+	}
+}
+
 func HandleRequest(ctx context.Context) error {
+	log := logger.GetLogger()
+	defer log.Sync()
+
 	common.PrintVersion(GitCommit)
 
 	credFile, err := os.Open(credentialsFile)
@@ -47,6 +88,9 @@ func HandleRequest(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
+	close := SetupNotifications(auth)
+	defer close()
 
 	var wg concurrency.WaitGroup
 	wg.Add(2)

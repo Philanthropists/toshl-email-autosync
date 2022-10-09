@@ -19,7 +19,7 @@ build-for-lambda: bin clean vendor fmt credentials test
 	cp credentials.json bin/
 
 .PHONY: build-docker
-docker-build: docker-lint clean fmt credentials test
+docker-build: docker-lint clean fmt credentials
 	docker buildx build \
 		--platform linux/amd64 \
 		--build-arg COMMIT=${git-commit} \

@@ -32,7 +32,7 @@ func getAuth(rawAuth []byte) (types.Auth, error) {
 	return auth, nil
 }
 
-func CreateNotificationsClient(auth types.Auth) (notifications.NotificationsClient, error) {
+func newNotificationsClient(auth types.Auth) (notifications.NotificationsClient, error) {
 	log := logger.GetLogger()
 
 	accountSid := auth.TwilioAccountSid
@@ -50,16 +50,16 @@ func CreateNotificationsClient(auth types.Auth) (notifications.NotificationsClie
 	return notifications.CreateFixedClient(twilioClient, fromNumber, toNumber)
 }
 
-func SetupNotifications(auth types.Auth) func() {
+func setupNotifications(auth types.Auth) func() {
 	log := logger.GetLogger()
 
-	notifClient, err := CreateNotificationsClient(auth)
+	notifClient, err := newNotificationsClient(auth)
 	if err != nil {
 		log.Errorf("could not create notifications client: %v", err)
 	}
 
 	if err := notifications.SetNotificationsClient(notifClient); err != nil {
-		log.Errorf("could not set notifications client: %s", err)
+		log.Warnf("could not set notifications client: %s", err.Error())
 	}
 
 	return func() {
@@ -90,7 +90,7 @@ func HandleRequest(ctx context.Context) error {
 		return err
 	}
 
-	closeFn := SetupNotifications(auth)
+	closeFn := setupNotifications(auth)
 	defer closeFn()
 
 	var wg concurrency.WaitGroup

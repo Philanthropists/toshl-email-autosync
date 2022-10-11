@@ -72,6 +72,8 @@ func flushNotifications() {
 			"error", err,
 			"response", resp)
 	}
+
+	log.Debugf("notifications were flushed, sent %d bytes", len(completeMsg))
 }
 
 func PushNotification(s string) error {

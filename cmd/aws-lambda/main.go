@@ -59,7 +59,7 @@ func SetupNotifications(auth types.Auth) func() {
 	}
 
 	if err := notifications.SetNotificationsClient(notifClient); err != nil {
-		log.Errorf("could not set notifications client: %v", err)
+		log.Errorf("could not set notifications client: %s", err)
 	}
 
 	return func() {
@@ -77,20 +77,21 @@ func HandleRequest(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer credFile.Close()
 
 	authBytes, err := io.ReadAll(credFile)
 	if err != nil {
 		return err
 	}
 
+	credFile.Close()
+
 	auth, err := getAuth(authBytes)
 	if err != nil {
 		return err
 	}
 
-	close := SetupNotifications(auth)
-	defer close()
+	closeFn := SetupNotifications(auth)
+	defer closeFn()
 
 	var wg concurrency.WaitGroup
 	wg.Add(2)

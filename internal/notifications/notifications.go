@@ -28,12 +28,14 @@ func createNotificationsStore() {
 func SetNotificationsClient(ns NotificationsClient) error {
 	createNotificationsStore()
 
+	fmt.Printf("notifStore.Nc = %p, nil = %v\n", &notifStore.Nc, nil)
+
 	if ns == nil {
 		return fmt.Errorf("notifications client cannot be nil")
 	}
 
 	if notifStore.Nc != nil {
-		return fmt.Errorf("notifications client is already set")
+		return fmt.Errorf("notifications client is already set: %p", &notifStore.Nc)
 	}
 
 	notifStore.Nc = ns

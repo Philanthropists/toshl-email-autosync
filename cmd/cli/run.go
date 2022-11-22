@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"os"
 
-	"github.com/rs/zerolog"
+	zap "go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/entities"
@@ -35,21 +37,31 @@ func getConfig() (entities.Config, error) {
 	return config, nil
 }
 
+func getLogger() (*zap.Logger, error) {
+	config := zap.NewDevelopmentConfig()
+	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+
+	return config.Build()
+}
+
 func main() {
-	log := zerolog.New(os.Stderr).Output(zerolog.ConsoleWriter{Out: os.Stderr}).With().Timestamp().Logger()
+	logger, err := getLogger()
+	if err != nil {
+		log.Panicf("could not create logger: %v", err)
+	}
 
 	config, err := getConfig()
 	if err != nil {
-		log.Fatal().Err(err).Msg("failed to get credentials")
+		logger.Fatal("failed to get credentials", zap.Error(err))
 	}
 
 	sync := sync.Sync{
 		Config: config,
-		Log:    log,
+		Log:    logger,
 	}
 
 	err = sync.Run(context.Background())
 	if err != nil {
-		log.Fatal().Err(err).Msg("")
+		logger.Fatal("failed to run sync", zap.Error(err))
 	}
 }

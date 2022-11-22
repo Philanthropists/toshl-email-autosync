@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"io"
 	"log"
 	"os"
@@ -45,6 +46,9 @@ func getLogger() (*zap.Logger, error) {
 }
 
 func main() {
+	execute := flag.Bool("execute", false, "execute actual changes")
+	flag.Parse()
+
 	logger, err := getLogger()
 	if err != nil {
 		log.Panicf("could not create logger: %v", err)
@@ -57,6 +61,7 @@ func main() {
 
 	sync := sync.Sync{
 		Config: config,
+		DryRun: !*execute,
 		Log:    logger,
 	}
 

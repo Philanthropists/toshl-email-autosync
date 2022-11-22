@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.17.7
 	github.com/emersion/go-imap v1.2.1
 	github.com/emersion/go-message v0.15.0
-	github.com/twilio/twilio-go v0.18.0
+	github.com/twilio/twilio-go v1.2.1
 	go.uber.org/zap v1.23.0
 )
 

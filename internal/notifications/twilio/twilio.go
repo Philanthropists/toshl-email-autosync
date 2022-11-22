@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	_twilio "github.com/twilio/twilio-go"
-	openapi "github.com/twilio/twilio-go/rest/api/v2010"
+	twilioApi "github.com/twilio/twilio-go/rest/api/v2010"
 )
 
 type Client struct {
@@ -17,7 +17,7 @@ type Client struct {
 
 func (c *Client) client() *_twilio.RestClient {
 	if c.tc == nil {
-		c.tc = _twilio.NewRestClientWithParams(_twilio.RestClientParams{
+		c.tc = _twilio.NewRestClientWithParams(_twilio.ClientParams{
 			Username: c.AccountSid,
 			Password: c.Token,
 		})
@@ -26,27 +26,27 @@ func (c *Client) client() *_twilio.RestClient {
 	return c.tc
 }
 
-func (c *Client) SendMsg(from, to, msg string) (string, error) {
+func (c *Client) SendMessage(from, to, msg string) ([]byte, error) {
 	tc := c.client()
 
 	if from == "" || to == "" || msg == "" {
-		return "", errors.New("none of the parameters can be empty")
+		return nil, errors.New("none of the parameters can be empty")
 	}
 
-	params := &openapi.CreateMessageParams{}
-	params.SetFrom(from)
-	params.SetTo(to)
-	params.SetBody(msg)
+	ps := &twilioApi.CreateMessageParams{}
+	ps.SetFrom(from)
+	ps.SetTo(to)
+	ps.SetBody(msg)
 
-	message, err := tc.ApiV2010.CreateMessage(params)
+	message, err := tc.Api.CreateMessage(ps)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	response, err := json.Marshal(*message)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return string(response), nil
+	return response, nil
 }

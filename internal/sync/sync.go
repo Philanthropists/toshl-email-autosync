@@ -2,7 +2,6 @@ package sync
 
 import (
 	"context"
-	"errors"
 	"log"
 
 	zap "go.uber.org/zap"
@@ -13,7 +12,8 @@ import (
 type Sync struct {
 	Config entities.Config
 	DryRun bool
-	Log    *zap.Logger
+
+	Log *zap.Logger
 }
 
 func (s *Sync) log() *zap.Logger {
@@ -29,7 +29,7 @@ func (s *Sync) log() *zap.Logger {
 }
 
 func (s *Sync) Run(ctx context.Context) error {
-	s.log().Info("Starting to run ...")
+	s.log().Info("Starting to run sync", zap.Bool("dryrun", s.DryRun))
 
-	return errors.New("test error")
+	return nil
 }

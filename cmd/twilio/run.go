@@ -60,5 +60,10 @@ func main() {
 
 	fmt.Printf("Sending from number %s to %s: %s\n", config.FromNumber, toNumber, *msg)
 
-	client.SendMsg(config.FromNumber, toNumber, *msg)
+	res, err := client.SendMessage(config.FromNumber, toNumber, *msg)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Printf("response: %s\n", res)
 }

@@ -7,7 +7,10 @@ docker-build-push: docker-build docker-push
 
 .PHONY: build
 build: bin clean vendor fmt credentials test
-	go build ${flags} -o bin cmd/run/run.go
+	go build ${flags} -o bin/run cmd/cli/run.go
+	go build ${flags} -o bin/mail cmd/mail/run.go
+	go build ${flags} -o bin/dynamodb cmd/dynamodb/run.go
+	go build ${flags} -o bin/twilio cmd/twilio/run.go
 	cp credentials.json bin/
 
 .PHONY: build-for-lambda

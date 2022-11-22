@@ -1,4 +1,4 @@
-package types
+package entities
 
 import (
 	_imap "github.com/emersion/go-imap"

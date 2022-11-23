@@ -7,14 +7,14 @@ import (
 	"io"
 	"os"
 
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/notifications/twilio"
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/entities"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/notification/twilio"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
 )
 
 const credentialsFile = "credentials.json"
 
 type Config struct {
-	entities.Twilio
+	types.Twilio
 }
 
 func getConfig() (Config, error) {

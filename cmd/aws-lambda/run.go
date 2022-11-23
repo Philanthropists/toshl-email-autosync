@@ -8,29 +8,29 @@ import (
 
 	"github.com/aws/aws-lambda-go/lambda"
 
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/entities"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
 )
 
 const credentialsFile = "credentials.json"
 
 var GitCommit string
 
-func getConfig() (entities.Config, error) {
+func getConfig() (types.Config, error) {
 	credFile, err := os.Open(credentialsFile)
 	if err != nil {
-		return entities.Config{}, err
+		return types.Config{}, err
 	}
 	defer credFile.Close()
 
 	authBytes, err := io.ReadAll(credFile)
 	if err != nil {
-		return entities.Config{}, err
+		return types.Config{}, err
 	}
 
-	var config entities.Config
+	var config types.Config
 	err = json.Unmarshal(authBytes, &config)
 	if err != nil {
-		return entities.Config{}, err
+		return types.Config{}, err
 	}
 
 	return config, nil

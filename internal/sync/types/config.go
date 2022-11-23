@@ -1,4 +1,4 @@
-package entities
+package types
 
 type Config struct {
 	Credentials

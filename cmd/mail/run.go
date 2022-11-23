@@ -8,13 +8,13 @@ import (
 	"time"
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/mail"
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/entities"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
 )
 
 const credentialsFile = "credentials.json"
 
 type Config struct {
-	entities.Email
+	types.Email
 }
 
 func getConfig() (Config, error) {

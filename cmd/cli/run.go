@@ -12,27 +12,27 @@ import (
 	"go.uber.org/zap/zapcore"
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync"
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/entities"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
 )
 
 const credentialsFile = "credentials.json"
 
-func getConfig() (entities.Config, error) {
+func getConfig() (types.Config, error) {
 	credFile, err := os.Open(credentialsFile)
 	if err != nil {
-		return entities.Config{}, err
+		return types.Config{}, err
 	}
 	defer credFile.Close()
 
 	raw, err := io.ReadAll(credFile)
 	if err != nil {
-		return entities.Config{}, err
+		return types.Config{}, err
 	}
 
-	var config entities.Config
+	var config types.Config
 	err = json.Unmarshal(raw, &config)
 	if err != nil {
-		return entities.Config{}, err
+		return types.Config{}, err
 	}
 
 	return config, nil

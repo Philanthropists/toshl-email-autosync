@@ -6,11 +6,11 @@ import (
 
 	zap "go.uber.org/zap"
 
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/entities"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
 )
 
 type Sync struct {
-	Config entities.Config
+	Config types.Config
 	DryRun bool
 
 	Log *zap.Logger

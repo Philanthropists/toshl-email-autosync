@@ -6,7 +6,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/mail/entities"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/mail/types"
 	"github.com/Philanthropists/toshl-email-autosync/v2/pkg/pipe"
 	_imap "github.com/emersion/go-imap"
 	_client "github.com/emersion/go-imap/client"
@@ -58,7 +58,7 @@ func CreateImapClient(addr, username, password string) (Client, error) {
 	return c, nil
 }
 
-func (c *Client) Mailboxes() ([]entities.Mailbox, error) {
+func (c *Client) Mailboxes() ([]types.Mailbox, error) {
 	client, err := c.client()
 	if err != nil {
 		return nil, err
@@ -70,9 +70,9 @@ func (c *Client) Mailboxes() ([]entities.Mailbox, error) {
 		done <- client.List("", "*", rawMailboxes)
 	}()
 
-	var mailboxes []entities.Mailbox
+	var mailboxes []types.Mailbox
 	for m := range rawMailboxes {
-		mailbox := entities.Mailbox(m.Name)
+		mailbox := types.Mailbox(m.Name)
 		mailboxes = append(mailboxes, mailbox)
 	}
 
@@ -83,7 +83,7 @@ func (c *Client) Mailboxes() ([]entities.Mailbox, error) {
 	return mailboxes, nil
 }
 
-func (c *Client) Messages(box entities.Mailbox, since time.Time) (<-chan *entities.Message, error) {
+func (c *Client) Messages(box types.Mailbox, since time.Time) (<-chan *types.Message, error) {
 	client, err := c.client()
 	if err != nil {
 		return nil, err
@@ -121,9 +121,9 @@ func (c *Client) Messages(box entities.Mailbox, since time.Time) (<-chan *entiti
 		}
 	}()
 
-	msgs := pipe.ConcurrentMap(done, cons, messages, func(m *_imap.Message) pipe.Result[*entities.Message] {
+	msgs := pipe.ConcurrentMap(done, cons, messages, func(m *_imap.Message) pipe.Result[*types.Message] {
 		msg, err := getCompleteMessage(m)
-		return pipe.Result[*entities.Message]{
+		return pipe.Result[*types.Message]{
 			Value: &msg,
 			Error: err,
 		}
@@ -134,13 +134,13 @@ func (c *Client) Messages(box entities.Mailbox, since time.Time) (<-chan *entiti
 	return filteredMsgs, nil
 }
 
-func getCompleteMessage(_msg *_imap.Message) (entities.Message, error) {
+func getCompleteMessage(_msg *_imap.Message) (types.Message, error) {
 	body, err := getMessageBody(_msg)
 	if err != nil {
-		return entities.Message{}, err
+		return types.Message{}, err
 	}
 
-	return entities.Message{
+	return types.Message{
 		Message: _msg,
 		RawBody: body,
 	}, nil
@@ -172,7 +172,7 @@ func getMessageBody(_msg *_imap.Message) ([]byte, error) {
 	return body, nil
 }
 
-func (c *Client) Move(dest entities.Mailbox, ids ...uint32) error {
+func (c *Client) Move(dest types.Mailbox, ids ...uint32) error {
 	client, err := c.client()
 	if err != nil {
 		return err

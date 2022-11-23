@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/mail/types"
@@ -18,6 +19,7 @@ type Client struct {
 	Username string
 	Password string
 
+	once       sync.Once
 	imapClient *_client.Client
 }
 
@@ -39,23 +41,11 @@ func (c *Client) createClient() (*_client.Client, error) {
 		return nil, err
 	}
 
+	c.once.Do(func() {
+		c.imapClient = emailClient
+	})
+
 	return emailClient, nil
-}
-
-func CreateImapClient(addr, username, password string) (Client, error) {
-	c := Client{
-		Addr:     addr,
-		Username: username,
-		Password: password,
-	}
-
-	imapClient, err := c.createClient()
-	if err != nil {
-		return Client{}, err
-	}
-
-	c.imapClient = imapClient
-	return c, nil
 }
 
 func (c *Client) Mailboxes() ([]types.Mailbox, error) {
@@ -191,13 +181,12 @@ func (c *Client) Move(dest types.Mailbox, ids ...uint32) error {
 }
 
 func (c *Client) Logout() error {
-	client, err := c.client()
-	if err != nil {
-		return fmt.Errorf("could not logout: %w", err)
+	if c.imapClient == nil {
+		return nil
 	}
 
-	if err := client.Logout(); err != nil {
-		return err
+	if err := c.imapClient.Logout(); err != nil {
+		return fmt.Errorf("could not logout: %w", err)
 	}
 
 	return nil

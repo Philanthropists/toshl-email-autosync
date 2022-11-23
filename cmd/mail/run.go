@@ -44,9 +44,10 @@ func main() {
 		panic(err)
 	}
 
-	client, err := mail.CreateImapClient(config.Address, config.Username, config.Password)
-	if err != nil {
-		panic(err)
+	client := mail.Client{
+		Addr:     config.Address,
+		Username: config.Username,
+		Password: config.Password,
 	}
 	defer client.Logout()
 

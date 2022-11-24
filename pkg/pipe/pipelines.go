@@ -11,6 +11,23 @@ type Result[T any] struct {
 
 type Handler[T, K any] func(T) Result[K]
 
+func internalMapper[A, B any](mapper func(A) (B, error)) func(A) Result[B] {
+	if mapper == nil {
+		// nop function
+		return func(A) Result[B] {
+			return Result[B]{}
+		}
+	}
+
+	return func(a A) Result[B] {
+		b, err := mapper(a)
+		return Result[B]{
+			Value: b,
+			Error: err,
+		}
+	}
+}
+
 // Multiplexes multiple channels into a single one
 func FanIn[T any](done <-chan struct{}, channels ...<-chan T) <-chan T {
 	var wg sync.WaitGroup
@@ -127,7 +144,7 @@ func IgnoreOnError[T any](done <-chan struct{}, in <-chan Result[T]) <-chan T {
 }
 
 // Maps from channel of type A to a channel of type B
-func Map[A, B any](done <-chan struct{}, in <-chan A, mapper func(A) Result[B]) <-chan Result[B] {
+func Map[A, B any](done <-chan struct{}, in <-chan A, mapper func(A) (B, error)) <-chan Result[B] {
 	out := make(chan Result[B])
 
 	go func() {
@@ -137,7 +154,7 @@ func Map[A, B any](done <-chan struct{}, in <-chan A, mapper func(A) Result[B]) 
 			select {
 			case <-done:
 				return
-			case out <- mapper(val):
+			case out <- internalMapper(mapper)(val):
 			}
 		}
 	}()
@@ -146,16 +163,16 @@ func Map[A, B any](done <-chan struct{}, in <-chan A, mapper func(A) Result[B]) 
 }
 
 // Maps from channel of type A to a channel of type B concurrently
-func ConcurrentMap[A, B any](done <-chan struct{}, coroutines int, in <-chan A, mapper func(A) Result[B]) <-chan Result[B] {
-	if coroutines <= 0 {
+func ConcurrentMap[A, B any](done <-chan struct{}, coroutines uint, in <-chan A, mapper func(A) (B, error)) <-chan Result[B] {
+	if coroutines == 0 {
 		coroutines = 1
 	}
 
 	out := make(chan Result[B], coroutines)
 
 	var wg sync.WaitGroup
-	wg.Add(coroutines)
-	for i := 0; i < coroutines; i++ {
+	wg.Add(int(coroutines))
+	for i := 0; i < int(coroutines); i++ {
 		go func() {
 			defer wg.Done()
 
@@ -163,7 +180,7 @@ func ConcurrentMap[A, B any](done <-chan struct{}, coroutines int, in <-chan A, 
 				select {
 				case <-done:
 					return
-				case out <- mapper(val):
+				case out <- internalMapper(mapper)(val):
 				}
 			}
 		}()
@@ -193,4 +210,38 @@ func WaitClosed[T any](done <-chan struct{}, in <-chan T) {
 			}
 		}
 	}
+}
+
+func AwaitResult[T any](done <-chan struct{}, callback func() (T, error)) <-chan Result[T] {
+	if callback == nil {
+		return nil
+	}
+
+	out := make(chan Result[T], 1)
+	proxy := make(chan Result[T], 1)
+
+	go func(proxy chan<- Result[T]) {
+		defer close(proxy)
+
+		t, err := callback()
+		proxy <- Result[T]{
+			Value: t,
+			Error: err,
+		}
+	}(proxy)
+
+	go func(c chan<- Result[T], proxy <-chan Result[T]) {
+		defer close(c)
+
+		select {
+		case <-done:
+			return
+		case r, ok := <-proxy:
+			if ok {
+				out <- r
+			}
+		}
+	}(out, proxy)
+
+	return out
 }

@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"time"
 
 	zap "go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -47,6 +48,7 @@ func getLogger() (*zap.Logger, error) {
 
 func main() {
 	execute := flag.Bool("execute", false, "execute actual changes")
+	timeout := flag.Uint("timeout", 0, "timeout for sync to cancel")
 	flag.Parse()
 
 	logger, err := getLogger()
@@ -65,7 +67,15 @@ func main() {
 		Log:    logger,
 	}
 
-	err = sync.Run(context.Background())
+	ctx := context.Background()
+	if *timeout != 0 {
+		t := time.Duration(*timeout) * time.Second
+		nctx, cancel := context.WithTimeout(ctx, t)
+		ctx = nctx
+		defer cancel()
+	}
+
+	err = sync.Run(ctx)
 	if err != nil {
 		logger.Fatal("failed to run sync", zap.Error(err))
 	}

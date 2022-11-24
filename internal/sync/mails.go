@@ -7,6 +7,7 @@ import (
 	mail "github.com/Philanthropists/toshl-email-autosync/v2/internal/mail/types"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/types"
 	"github.com/Philanthropists/toshl-email-autosync/v2/pkg/pipe"
+	"go.uber.org/zap"
 )
 
 func (s *Sync) LastProcessedDate() time.Time {
@@ -15,18 +16,22 @@ func (s *Sync) LastProcessedDate() time.Time {
 }
 
 type mailClient interface {
-	Messages(box mail.Mailbox, since time.Time) (<-chan *mail.Message, error)
+	Messages(ctx context.Context, box mail.Mailbox, since time.Time) (<-chan *mail.Message, error)
 }
 
-func (s *Sync) GetMessagesFromInbox(ctx context.Context, c mailClient, banks []types.BankDelegate) (<-chan *types.BankMessage, error) {
+func (s *Sync) GetMessagesFromInbox(ctx context.Context, c mailClient, banks []types.BankDelegate) (<-chan pipe.Result[*types.BankMessage], error) {
 	const inbox = "INBOX"
 
-	msgs, err := c.Messages(inbox, s.LastProcessedDate())
+	since := s.LastProcessedDate()
+
+	s.log().Info("processing messages from inbox", zap.Reflect("since", since))
+
+	msgs, err := c.Messages(ctx, inbox, since)
 	if err != nil {
 		return nil, err
 	}
 
-	filteredMsgs := pipe.ConcurrentMap(ctx.Done(), 10, msgs, func(m *mail.Message) pipe.Result[*types.BankMessage] {
+	filteredMsgs := pipe.ConcurrentMap(ctx.Done(), s.goroutines(), msgs, func(m *mail.Message) (*types.BankMessage, error) {
 		msg := types.Message{
 			Message: m,
 		}
@@ -38,18 +43,12 @@ func (s *Sync) GetMessagesFromInbox(ctx context.Context, c mailClient, banks []t
 					Bank:    b,
 				}
 
-				return pipe.Result[*types.BankMessage]{
-					Value: bm,
-				}
+				return bm, nil
 			}
 		}
 
-		return pipe.Result[*types.BankMessage]{
-			Error: ErrMessageBankNotFound,
-		}
+		return nil, ErrMessageBankNotFound
 	})
 
-	matchMsgs := pipe.IgnoreOnError(ctx.Done(), filteredMsgs)
-
-	return matchMsgs, nil
+	return filteredMsgs, nil
 }

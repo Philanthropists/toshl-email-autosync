@@ -4,18 +4,21 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"runtime"
 
 	zap "go.uber.org/zap"
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/mail"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
+	"github.com/Philanthropists/toshl-email-autosync/v2/pkg/pipe"
 )
 
 type Sync struct {
 	Config types.Config
 	DryRun bool
 
-	Log *zap.Logger
+	Log        *zap.Logger
+	Goroutines uint
 }
 
 func (s *Sync) log() *zap.Logger {
@@ -28,6 +31,15 @@ func (s *Sync) log() *zap.Logger {
 	}
 
 	return s.Log
+}
+
+func (s *Sync) goroutines() uint {
+	if s.Goroutines == 0 {
+		cpus := runtime.NumCPU()
+		return uint(cpus)
+	}
+
+	return s.Goroutines
 }
 
 func (s *Sync) Run(ctx context.Context) error {
@@ -47,8 +59,23 @@ func (s *Sync) Run(ctx context.Context) error {
 		return err
 	}
 
+	msgs, teeMsgs := pipe.Tee(ctx.Done(), msgs)
+
+	errTxs := pipe.AwaitResult(ctx.Done(), func() (int64, error) {
+		var f int64
+		for m := range teeMsgs {
+			if m.Error != nil {
+				f++
+			}
+		}
+
+		return f, nil
+	})
+
+	matchedMsgs := pipe.IgnoreOnError(ctx.Done(), msgs)
+
 	var c int32
-	for m := range msgs {
+	for m := range matchedMsgs {
 		date := m.Envelope.Date
 		sub := m.Envelope.Subject
 		bank := m.Bank.String()
@@ -56,7 +83,7 @@ func (s *Sync) Run(ctx context.Context) error {
 		c++
 	}
 
-	s.log().Info("processed messages", zap.Int32("count", c))
+	s.log().Info("processed messages", zap.Int32("count", c), zap.Int64("failures", (<-errTxs).Value))
 
 	return nil
 }

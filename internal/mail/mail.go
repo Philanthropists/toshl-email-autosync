@@ -1,6 +1,7 @@
 package mail
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -73,7 +74,7 @@ func (c *Client) Mailboxes() ([]types.Mailbox, error) {
 	return mailboxes, nil
 }
 
-func (c *Client) Messages(box types.Mailbox, since time.Time) (<-chan *types.Message, error) {
+func (c *Client) Messages(ctx context.Context, box types.Mailbox, since time.Time) (<-chan *types.Message, error) {
 	client, err := c.client()
 	if err != nil {
 		return nil, err
@@ -98,28 +99,45 @@ func (c *Client) Messages(box types.Mailbox, since time.Time) (<-chan *types.Mes
 	seqset := new(_imap.SeqSet)
 	seqset.AddNum(ids...)
 
-	const cons = 10
-	messages := make(chan *_imap.Message, cons)
-	done := make(chan struct{})
+	messages := make(chan *_imap.Message)
 
-	var section _imap.BodySectionName
-	fetch := []_imap.FetchItem{section.FetchItem(), _imap.FetchEnvelope}
-	go func() {
+	awaitErr := pipe.AwaitResult(ctx.Done(), func() (bool, error) {
+		var section _imap.BodySectionName
+		fetch := []_imap.FetchItem{section.FetchItem(), _imap.FetchEnvelope}
 		err := client.Fetch(seqset, fetch, messages)
 		if err != nil {
-			close(done)
+			return false, err
+		}
+
+		return true, nil
+	})
+
+	newCtx, cancel := context.WithCancel(ctx)
+
+	go func() {
+		err, ok := <-awaitErr
+		if ok && err.Error != nil {
+			cancel()
 		}
 	}()
 
-	msgs := pipe.ConcurrentMap(done, cons, messages, func(m *_imap.Message) pipe.Result[*types.Message] {
-		msg, err := getCompleteMessage(m)
-		return pipe.Result[*types.Message]{
-			Value: &msg,
-			Error: err,
+	// Workaround since imap client is trying to send messages and it does not receive any context to cancel
+	go func() {
+		_, ok := <-newCtx.Done()
+		if !ok && newCtx.Err() != nil {
+			for range messages {
+				// consume until finished
+			}
 		}
+	}()
+
+	const cons = 10
+	msgs := pipe.ConcurrentMap(newCtx.Done(), cons, messages, func(m *_imap.Message) (*types.Message, error) {
+		msg, err := getCompleteMessage(m)
+		return &msg, err
 	})
 
-	filteredMsgs := pipe.IgnoreOnError(done, msgs)
+	filteredMsgs := pipe.IgnoreOnError(newCtx.Done(), msgs)
 
 	return filteredMsgs, nil
 }

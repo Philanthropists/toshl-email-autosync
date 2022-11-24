@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -63,7 +64,7 @@ func main() {
 
 	// --------------
 	since := time.Now().Add(-30 * 24 * 60 * 60 * time.Second)
-	msg, err := client.Messages("INBOX", since)
+	msg, err := client.Messages(context.Background(), "INBOX", since)
 	if err != nil {
 		panic(err)
 	}

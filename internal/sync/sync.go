@@ -2,13 +2,13 @@ package sync
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"runtime"
 
 	zap "go.uber.org/zap"
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/mail"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/store/saas/toshl"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
 	"github.com/Philanthropists/toshl-email-autosync/v2/pkg/pipe"
 )
@@ -59,31 +59,35 @@ func (s *Sync) Run(ctx context.Context) error {
 		return err
 	}
 
-	msgs, teeMsgs := pipe.Tee(ctx.Done(), msgs)
-
-	errTxs := pipe.AwaitResult(ctx.Done(), func() (int64, error) {
-		var f int64
-		for m := range teeMsgs {
-			if m.Error != nil {
-				f++
-			}
-		}
-
-		return f, nil
-	})
-
 	matchedMsgs := pipe.IgnoreOnError(ctx.Done(), msgs)
 
-	var c int32
-	for m := range matchedMsgs {
-		date := m.Envelope.Date
-		sub := m.Envelope.Subject
-		bank := m.Bank.String()
-		fmt.Printf("[%v][%s][%s]\n", date, sub, bank)
-		c++
+	txs := s.ExtractTransactionInfoFromMessages(ctx, matchedMsgs)
+
+	toshlCl, err := toshl.NewToshlClient(s.Config.Toshl.Token)
+	if err != nil {
+		return err
 	}
 
-	s.log().Info("processed messages", zap.Int32("count", c), zap.Int64("failures", (<-errTxs).Value))
+	cleanTxs := pipe.IgnoreOnError(ctx.Done(), txs)
+
+	savedTxs := s.SaveTransactions(ctx, toshlCl, cleanTxs)
+
+	for t := range savedTxs {
+		tx := t.Value
+		logCtx := s.log().With(
+			zap.Reflect("date", tx.Date),
+			zap.String("account", tx.Account),
+			zap.String("place", tx.Place),
+			zap.Reflect("value", tx.Value),
+			zap.String("bank", tx.Bank.String()),
+		)
+
+		if t.Error == nil {
+			logCtx.Info("created entry for transaction")
+		} else {
+			logCtx.Error("failed to create entry for transaction", zap.Error(t.Error))
+		}
+	}
 
 	return nil
 }

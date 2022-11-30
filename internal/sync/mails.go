@@ -24,7 +24,7 @@ func (s *Sync) GetMessagesFromInbox(ctx context.Context, c mailClient, banks []t
 
 	since := s.LastProcessedDate()
 
-	s.log().Info("processing messages from inbox", zap.Reflect("since", since))
+	s.log().Info("processing messages from "+inbox, zap.Reflect("since", since))
 
 	msgs, err := c.Messages(ctx, inbox, since)
 	if err != nil {

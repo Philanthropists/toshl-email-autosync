@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"runtime"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/mail"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/store/saas/toshl"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
+	gTypes "github.com/Philanthropists/toshl-email-autosync/v2/internal/types"
 	"github.com/Philanthropists/toshl-email-autosync/v2/pkg/pipe"
 )
 
@@ -42,7 +44,13 @@ func (s *Sync) goroutines() uint {
 	return s.Goroutines
 }
 
-func (s *Sync) Run(ctx context.Context) error {
+func (s *Sync) Run(ctx context.Context) (e error) {
+	defer func() {
+		if err := recover(); err != nil {
+			e = fmt.Errorf("got panic: %v", err)
+		}
+	}()
+
 	s.log().Info("running sync", zap.Bool("dryrun", s.DryRun))
 
 	mailCl := mail.Client{
@@ -72,7 +80,21 @@ func (s *Sync) Run(ctx context.Context) error {
 
 	savedTxs := s.SaveTransactions(ctx, toshlCl, cleanTxs)
 
-	for t := range savedTxs {
+	savedTxs, teeSavedTxs := pipe.Tee(ctx.Done(), savedTxs)
+
+	successTxs := pipe.IgnoreOnError(ctx.Done(), savedTxs)
+
+	archived := s.ArchiveSuccessfulTransactions(ctx, &mailCl, successTxs)
+
+	out := pipe.OnError(ctx.Done(), archived, func(t *gTypes.TransactionInfo, err error) {
+		if err != nil {
+			s.log().Error("failed to archive transaction email", zap.Reflect("entry", *t), zap.Error(err))
+		}
+	})
+
+	pipe.NopConsumer(ctx.Done(), out)
+
+	for t := range teeSavedTxs {
 		tx := t.Value
 		logCtx := s.log().With(
 			zap.Reflect("date", tx.Date),

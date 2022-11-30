@@ -245,3 +245,18 @@ func AwaitResult[T any](done <-chan struct{}, callback func() (T, error)) <-chan
 
 	return out
 }
+
+func NopConsumer[T any](done <-chan struct{}, in <-chan T) {
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case _, ok := <-in:
+				if !ok {
+					return
+				}
+			}
+		}
+	}()
+}

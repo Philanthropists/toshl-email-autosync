@@ -11,8 +11,8 @@ import (
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/mail"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/store/saas/toshl"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
-	gTypes "github.com/Philanthropists/toshl-email-autosync/v2/internal/types"
 	"github.com/Philanthropists/toshl-email-autosync/v2/pkg/pipe"
+	"github.com/pkg/errors"
 )
 
 type Sync struct {
@@ -44,10 +44,26 @@ func (s *Sync) goroutines() uint {
 	return s.Goroutines
 }
 
+type stackTracer interface {
+	StackTrace() errors.StackTrace
+}
+
 func (s *Sync) Run(ctx context.Context) (e error) {
 	defer func() {
 		if err := recover(); err != nil {
-			e = fmt.Errorf("got panic: %v", err)
+			asError, ok := err.(error)
+			if ok {
+				e = fmt.Errorf("got panic: %w", asError)
+				errStack, ok := errors.Cause(asError).(stackTracer)
+				if ok {
+					fmt.Printf("Stacktrace: %v\n", errStack.StackTrace())
+				} else {
+					s.log().Warn("error does not implement stacktracer")
+				}
+
+			} else {
+				e = fmt.Errorf("got panic: %v", err)
+			}
 		}
 	}()
 
@@ -79,20 +95,11 @@ func (s *Sync) Run(ctx context.Context) (e error) {
 	cleanTxs := pipe.IgnoreOnError(ctx.Done(), txs)
 
 	savedTxs := s.SaveTransactions(ctx, toshlCl, cleanTxs)
-
 	savedTxs, teeSavedTxs := pipe.Tee(ctx.Done(), savedTxs)
 
-	successTxs := pipe.IgnoreOnError(ctx.Done(), savedTxs)
+	successfulTxs := pipe.IgnoreOnError(ctx.Done(), savedTxs)
 
-	archived := s.ArchiveSuccessfulTransactions(ctx, &mailCl, successTxs)
-
-	out := pipe.OnError(ctx.Done(), archived, func(t *gTypes.TransactionInfo, err error) {
-		if err != nil {
-			s.log().Error("failed to archive transaction email", zap.Reflect("entry", *t), zap.Error(err))
-		}
-	})
-
-	pipe.NopConsumer(ctx.Done(), out)
+	awaitErr := s.ArchiveTransactions(ctx, &mailCl, successfulTxs)
 
 	for t := range teeSavedTxs {
 		tx := t.Value
@@ -109,6 +116,11 @@ func (s *Sync) Run(ctx context.Context) (e error) {
 		} else {
 			logCtx.Error("failed to create entry for transaction", zap.Error(t.Error))
 		}
+	}
+
+	archiveErr, ok := <-awaitErr
+	if ok && archiveErr != nil {
+		s.log().Error("failed to archive transaction emails", zap.Error(archiveErr))
 	}
 
 	return nil

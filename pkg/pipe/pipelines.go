@@ -147,6 +147,7 @@ func IgnoreOnError[T any](done <-chan struct{}, in <-chan Result[T]) <-chan T {
 func Map[A, B any](done <-chan struct{}, in <-chan A, mapper func(A) (B, error)) <-chan Result[B] {
 	out := make(chan Result[B])
 
+	inmap := internalMapper(mapper)
 	go func() {
 		defer close(out)
 
@@ -154,7 +155,7 @@ func Map[A, B any](done <-chan struct{}, in <-chan A, mapper func(A) (B, error))
 			select {
 			case <-done:
 				return
-			case out <- internalMapper(mapper)(val):
+			case out <- inmap(val):
 			}
 		}
 	}()
@@ -172,6 +173,7 @@ func ConcurrentMap[A, B any](done <-chan struct{}, coroutines uint, in <-chan A,
 
 	var wg sync.WaitGroup
 	wg.Add(int(coroutines))
+	inmap := internalMapper(mapper)
 	for i := 0; i < int(coroutines); i++ {
 		go func() {
 			defer wg.Done()
@@ -180,7 +182,7 @@ func ConcurrentMap[A, B any](done <-chan struct{}, coroutines uint, in <-chan A,
 				select {
 				case <-done:
 					return
-				case out <- internalMapper(mapper)(val):
+				case out <- inmap(val):
 				}
 			}
 		}()
@@ -259,4 +261,24 @@ func NopConsumer[T any](done <-chan struct{}, in <-chan T) {
 			}
 		}
 	}()
+}
+
+func Gather[A, B any](done <-chan struct{}, in <-chan A, mapper func(A) (B, error)) (res []Result[B]) {
+	for {
+		select {
+		case <-done:
+			return
+		case v, ok := <-in:
+			if ok {
+				m, err := mapper(v)
+				r := Result[B]{
+					Error: err,
+					Value: m,
+				}
+				res = append(res, r)
+			} else {
+				return
+			}
+		}
+	}
 }

@@ -182,7 +182,12 @@ func (s *Sync) createEntry(client toshlClient, cache *toshlCache, tx *types.Tran
 
 	s.log().Debug("entry to create", zap.Reflect("entry", newEntry))
 
-	err = client.CreateEntry(&newEntry)
+	if s.DryRun {
+		s.log().Info("not creating entry", zap.Bool("dryrun", s.DryRun))
+		err = nil
+	} else {
+		err = client.CreateEntry(&newEntry)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("could not create entry: %w", err)
 	}

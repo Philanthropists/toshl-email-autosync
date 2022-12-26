@@ -64,13 +64,13 @@ func main() {
 
 	// --------------
 	since := time.Now().Add(-30 * 24 * 60 * 60 * time.Second)
-	msg, err := client.Messages(context.Background(), "INBOX", since)
+	msgs, err := client.Messages(context.Background(), "INBOX", since)
 	if err != nil {
 		panic(err)
 	}
 
 	fmt.Println("Messages from INBOX ----")
-	for m := range msg {
+	for m := range msgs {
 		fmt.Printf("%d - %s - size: %d\n", m.SeqNum, m.Envelope.Subject, len(m.RawBody))
 	}
 }

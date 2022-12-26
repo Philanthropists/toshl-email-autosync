@@ -80,13 +80,9 @@ func (c *Client) Messages(ctx context.Context, box types.Mailbox, since time.Tim
 		return nil, err
 	}
 
-	status, err := client.Select(string(box), true)
+	_, err = client.Select(string(box), true)
 	if err != nil {
 		return nil, err
-	}
-
-	if !status.ReadOnly {
-		return nil, errors.New("mailbox should be readonly")
 	}
 
 	criteria := _imap.NewSearchCriteria()
@@ -193,9 +189,7 @@ func (c *Client) Move(dest types.Mailbox, ids ...uint32) error {
 	seqset := new(_imap.SeqSet)
 	seqset.AddNum(ids...)
 
-	err = client.Move(seqset, string(dest))
-
-	return err
+	return client.Move(seqset, string(dest))
 }
 
 func (c *Client) Logout() error {

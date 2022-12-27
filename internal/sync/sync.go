@@ -5,14 +5,20 @@ import (
 	"fmt"
 	"log"
 	"runtime"
+	"time"
 
 	zap "go.uber.org/zap"
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/mail"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/store/nosql/dynamodb"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/store/saas/toshl"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
 	"github.com/Philanthropists/toshl-email-autosync/v2/pkg/pipe"
 	"github.com/pkg/errors"
+)
+
+var (
+	sinceFallbackDate time.Time = time.Now().Add(-30 * 24 * 60 * 60 * time.Second) // 30 days
 )
 
 type Sync struct {
@@ -46,6 +52,28 @@ func (s *Sync) goroutines() uint {
 
 type stackTracer interface {
 	StackTrace() errors.StackTrace
+}
+
+func (s *Sync) getLastProcessedDate(ctx context.Context) time.Time {
+	const region = "us-east-1"
+
+	logCtx := s.log().With(zap.Time("fallbackDate", sinceFallbackDate))
+
+	dynamoClient, err := dynamodb.NewDynamoDBClient(ctx, region)
+	if err != nil {
+		logCtx.Error("could not create dynamodb client",
+			zap.Error(err),
+		)
+		return sinceFallbackDate
+	}
+
+	since, err := s.LastProcessedDate(ctx, dynamoClient)
+	if err != nil {
+		logCtx.Error("could not get date from dynamodb", zap.Error(err))
+		return sinceFallbackDate
+	}
+
+	return since
 }
 
 func (s *Sync) Run(ctx context.Context) (e error) {
@@ -82,8 +110,9 @@ func (s *Sync) Run(ctx context.Context) (e error) {
 	}()
 
 	banks := s.AvailableBanks()
+	since := s.getLastProcessedDate(ctx)
 
-	msgs, err := s.GetMessagesFromInbox(ctx, &mailCl, banks)
+	msgs, err := s.GetMessagesFromInbox(ctx, &mailCl, banks, since)
 	if err != nil {
 		return err
 	}

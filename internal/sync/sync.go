@@ -54,12 +54,16 @@ type stackTracer interface {
 	StackTrace() errors.StackTrace
 }
 
-func (s *Sync) getLastProcessedDate(ctx context.Context) time.Time {
+func (s *Sync) getDynamoClient(ctx context.Context) (dynamodb.Client, error) {
 	const region = "us-east-1"
+	dynamoClient, err := dynamodb.NewDynamoDBClient(ctx, region)
+	return dynamoClient, err
+}
 
+func (s *Sync) getLastProcessedDate(ctx context.Context) time.Time {
 	logCtx := s.log().With(zap.Time("fallbackDate", sinceFallbackDate))
 
-	dynamoClient, err := dynamodb.NewDynamoDBClient(ctx, region)
+	client, err := s.getDynamoClient(ctx)
 	if err != nil {
 		logCtx.Error("could not create dynamodb client",
 			zap.Error(err),
@@ -67,7 +71,7 @@ func (s *Sync) getLastProcessedDate(ctx context.Context) time.Time {
 		return sinceFallbackDate
 	}
 
-	since, err := s.LastProcessedDate(ctx, dynamoClient)
+	since, err := s.LastProcessedDate(ctx, client)
 	if err != nil {
 		logCtx.Error("could not get date from dynamodb", zap.Error(err))
 		return sinceFallbackDate
@@ -130,12 +134,27 @@ func (s *Sync) Run(ctx context.Context) (e error) {
 
 	savedTxs := s.SaveTransactions(ctx, toshlCl, cleanTxs)
 	savedTxs, teeSavedTxs := pipe.Tee(ctx.Done(), savedTxs)
+	teeSavedTxs, teeSavedTxs2 := pipe.Tee(ctx.Done(), teeSavedTxs)
 
 	successfulTxs := pipe.IgnoreOnError(ctx.Done(), savedTxs)
+	failedTxs := pipe.OnlyOnError(ctx.Done(), teeSavedTxs)
 
-	awaitErr := s.ArchiveTransactions(ctx, &mailCl, successfulTxs)
+	asyncDate := pipe.AsyncResult(ctx.Done(), func() (time.Time, error) {
+		earliestDate := time.Now().Add(-24 * time.Hour)
+		for v := range failedTxs {
+			t := v.Value
+			date := t.Date
+			if date.Before(earliestDate) {
+				earliestDate = date
+			}
+		}
 
-	for t := range teeSavedTxs {
+		return earliestDate, nil
+	})
+
+	asyncErr := s.ArchiveTransactions(ctx, &mailCl, successfulTxs)
+
+	for t := range teeSavedTxs2 {
 		tx := t.Value
 		logCtx := s.log().With(
 			zap.Reflect("date", tx.Date),
@@ -152,9 +171,25 @@ func (s *Sync) Run(ctx context.Context) (e error) {
 		}
 	}
 
-	archiveErr, ok := <-awaitErr
+	archiveErr, ok := <-asyncErr
 	if ok && archiveErr != nil {
 		s.log().Error("failed to archive transaction emails", zap.Error(archiveErr))
+	}
+
+	if client, err := s.getDynamoClient(ctx); err == nil {
+		newDate := (<-asyncDate).Value
+		s.log().Info("updating last processed date", zap.Reflect("date", newDate))
+
+		err = s.UpdateLastProcessedDate(ctx, client, newDate)
+		if err != nil {
+			s.log().Error("could not update last processed date in dynamo",
+				zap.Error(err),
+			)
+		}
+	} else {
+		s.log().Error("could not create dynamo client",
+			zap.Error(err),
+		)
 	}
 
 	return nil

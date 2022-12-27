@@ -113,7 +113,7 @@ func Tee[T any](done <-chan struct{}, in <-chan T) (_, _ <-chan T) {
 
 // Handles errors and only streams errorless ones
 func OnError[T any](done <-chan struct{}, in <-chan Result[T], handler func(T, error)) <-chan T {
-	out := make(chan T)
+	out := make(chan T, 1)
 
 	go func() {
 		defer close(out)
@@ -141,6 +141,27 @@ func IgnoreOnError[T any](done <-chan struct{}, in <-chan Result[T]) <-chan T {
 	return OnError(done, in, func(T, error) {
 		// nop operation
 	})
+}
+
+// Only output results that are with error
+func OnlyOnError[T any](done <-chan struct{}, in <-chan Result[T]) <-chan Result[T] {
+	out := make(chan Result[T], 1)
+
+	go func() {
+		defer close(out)
+
+		for val := range OrDone(done, in) {
+			if val.Error != nil {
+				select {
+				case <-done:
+					return
+				case out <- val:
+				}
+			}
+		}
+	}()
+
+	return out
 }
 
 // Maps from channel of type A to a channel of type B

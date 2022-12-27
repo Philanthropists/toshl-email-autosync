@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"time"
 
@@ -50,7 +51,12 @@ func main() {
 		Username: config.Username,
 		Password: config.Password,
 	}
-	defer client.Logout()
+	defer func() {
+		err := client.Logout()
+		if err != nil {
+			log.Printf("error logging out of client: %v\n", err)
+		}
+	}()
 
 	mailboxes, err := client.Mailboxes()
 	if err != nil {

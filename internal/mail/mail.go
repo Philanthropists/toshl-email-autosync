@@ -97,7 +97,7 @@ func (c *Client) Messages(ctx context.Context, box types.Mailbox, since time.Tim
 
 	messages := make(chan *_imap.Message)
 
-	awaitErr := pipe.AwaitResult(ctx.Done(), func() (bool, error) {
+	asyncErr := pipe.AsyncResult(ctx.Done(), func() (bool, error) {
 		var section _imap.BodySectionName
 		fetch := []_imap.FetchItem{section.FetchItem(), _imap.FetchEnvelope}
 		err := client.Fetch(seqset, fetch, messages)
@@ -111,7 +111,7 @@ func (c *Client) Messages(ctx context.Context, box types.Mailbox, since time.Tim
 	newCtx, cancel := context.WithCancel(ctx)
 
 	go func() {
-		err, ok := <-awaitErr
+		err, ok := <-asyncErr
 		if ok && err.Error != nil {
 			cancel()
 		}

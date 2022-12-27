@@ -214,7 +214,7 @@ func WaitClosed[T any](done <-chan struct{}, in <-chan T) {
 	}
 }
 
-func AwaitResult[T any](done <-chan struct{}, callback func() (T, error)) <-chan Result[T] {
+func AsyncResult[T any](done <-chan struct{}, callback func() (T, error)) <-chan Result[T] {
 	if callback == nil {
 		return nil
 	}

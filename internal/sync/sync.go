@@ -58,7 +58,7 @@ func (s *Sync) Run(ctx context.Context) (e error) {
 				if ok {
 					fmt.Printf("Stacktrace: %v\n", errStack.StackTrace())
 				} else {
-					s.log().Warn("error does not implement stacktracer")
+					s.log().Debug("error does not implement stacktracer")
 				}
 
 			} else {
@@ -74,7 +74,12 @@ func (s *Sync) Run(ctx context.Context) (e error) {
 		Username: s.Config.Username,
 		Password: s.Config.Password,
 	}
-	defer mailCl.Logout()
+	defer func() {
+		err := mailCl.Logout()
+		if err != nil {
+			s.log().Warn("error logging out of mail client", zap.Error(err))
+		}
+	}()
 
 	banks := s.AvailableBanks()
 

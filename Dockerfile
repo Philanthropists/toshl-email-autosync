@@ -34,13 +34,12 @@ COPY --from=tests /empty .
 # Needed for getting timezone locale info (i.e. America/Bogota)
 RUN apk add --no-cache tzdata=2022f-r1
 
-COPY docker_entry.sh .
+COPY docker_entry.sh credentials.json ./
 ADD https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie .
 
-RUN chmod 755 aws-lambda-rie docker_entry.sh
+RUN chmod 755 aws-lambda-rie docker_entry.sh credentials.json
 
 COPY --from=builder /usr/local/bin/main ./main
-COPY credentials.json .
 RUN echo "${COMMIT}" > ./version
 
 ENTRYPOINT ["/docker_entry.sh"]

@@ -1,6 +1,7 @@
 package bancolombia
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -90,23 +91,35 @@ func (b Bancolombia) ExtractTransactionInfoFromMessage(msg entity.Message) (*ent
 
 	selectedRegexp, ok := regexp_util.MatchesAnyRegexp(regexMatching, text)
 	if !ok {
-		return nil, fmt.Errorf("message did not match any regexp from Bancolombia")
+		return nil, entity.ErrParseFailure{
+			Cause:   errors.New("message did not match any regexp from Bancolombia"),
+			Message: msg,
+		}
 	}
 
 	// sanity check
 	if !selectedRegexp.Value.IsValid() {
-		return nil, fmt.Errorf("transaction type is not valid")
+		return nil, entity.ErrParseFailure{
+			Cause:   errors.New("transaction type is not valid"),
+			Message: msg,
+		}
 	}
 
 	result := regexp_util.ExtractFieldsWithMatch(text, selectedRegexp)
 
 	if !validation.ContainsAllRequiredFields(result) {
-		return nil, fmt.Errorf("message does not contain all required fields - result [%+v]", result)
+		return nil, entity.ErrParseFailure{
+			Cause:   fmt.Errorf("message does not contain all required fields - result [%+v]", result),
+			Message: msg,
+		}
 	}
 
 	value, err := getValueFromText(result["value"])
 	if err != nil {
-		return nil, err
+		return nil, entity.ErrParseFailure{
+			Cause:   err,
+			Message: msg,
+		}
 	}
 
 	return &entity.TransactionInfo{

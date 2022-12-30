@@ -18,6 +18,8 @@ import (
 
 const credentialsFile = "credentials.json"
 
+var GitCommit string
+
 func getConfig() (types.Config, error) {
 	credFile, err := os.Open(credentialsFile)
 	if err != nil {
@@ -47,6 +49,11 @@ func getLogger() (*zap.Logger, error) {
 }
 
 func main() {
+	ctx := context.Background()
+	if GitCommit != "" && len(GitCommit) >= 3 {
+		ctx = context.WithValue(ctx, types.Version, GitCommit[:3])
+	}
+
 	execute := flag.Bool("execute", false, "execute actual changes")
 	timeout := flag.Uint("timeout", 0, "timeout for sync to cancel")
 	flag.Parse()
@@ -67,7 +74,6 @@ func main() {
 		Log:    logger,
 	}
 
-	ctx := context.Background()
 	if *timeout != 0 {
 		t := time.Duration(*timeout) * time.Second
 		nctx, cancel := context.WithTimeout(ctx, t)

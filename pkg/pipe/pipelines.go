@@ -217,24 +217,6 @@ func ConcurrentMap[A, B any](done <-chan struct{}, coroutines uint, in <-chan A,
 	return out
 }
 
-// Consumes from channel until it is closed or done channel is closed
-func WaitClosed[T any](done <-chan struct{}, in <-chan T) {
-	if in == nil {
-		return
-	}
-
-	for {
-		select {
-		case <-done:
-			return
-		case _, ok := <-in:
-			if !ok {
-				return
-			}
-		}
-	}
-}
-
 func AsyncResult[T any](done <-chan struct{}, callback func() (T, error)) <-chan Result[T] {
 	if callback == nil {
 		return nil
@@ -269,7 +251,12 @@ func AsyncResult[T any](done <-chan struct{}, callback func() (T, error)) <-chan
 	return out
 }
 
+// Consumes from channel until it is closed or done channel is closed
 func NopConsumer[T any](done <-chan struct{}, in <-chan T) {
+	if in == nil {
+		return
+	}
+
 	go func() {
 		for {
 			select {
@@ -302,4 +289,34 @@ func Gather[A, B any](done <-chan struct{}, in <-chan A, mapper func(A) (B, erro
 			}
 		}
 	}
+}
+
+func Observe[T any](done <-chan struct{}, in <-chan T, observer func(T)) <-chan T {
+	out := make(chan T)
+
+	go func() {
+		defer close(out)
+
+		for {
+			select {
+			case <-done:
+				return
+			case v, ok := <-in:
+				if !ok {
+					return
+				}
+				go func(v T) {
+					observer(v)
+				}(v)
+				select {
+				case <-done:
+					return
+				case out <- v:
+				}
+			}
+		}
+
+	}()
+
+	return out
 }

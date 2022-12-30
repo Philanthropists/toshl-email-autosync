@@ -10,9 +10,11 @@ import (
 	zap "go.uber.org/zap"
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/mail"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/notification/twilio"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/store/nosql/dynamodb"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/store/saas/toshl"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
+	gTypes "github.com/Philanthropists/toshl-email-autosync/v2/internal/types"
 	"github.com/Philanthropists/toshl-email-autosync/v2/pkg/pipe"
 	"github.com/pkg/errors"
 )
@@ -80,6 +82,17 @@ func (s *Sync) getLastProcessedDate(ctx context.Context) time.Time {
 	return since
 }
 
+type notifClientWrapper struct {
+	Client twilio.Client
+	From   string
+	To     string
+}
+
+func (n notifClientWrapper) SendMessage(msg string) error {
+	_, err := n.Client.SendMessage(n.From, n.To, msg)
+	return err
+}
+
 func (s *Sync) Run(ctx context.Context) (e error) {
 	defer func() {
 		if err := recover(); err != nil {
@@ -109,12 +122,33 @@ func (s *Sync) Run(ctx context.Context) (e error) {
 	defer func() {
 		err := mailCl.Logout()
 		if err != nil {
-			s.log().Warn("error logging out of mail client", zap.Error(err))
+			s.log().Warn("could not log out from mail client", zap.Error(err))
 		}
 	}()
 
 	banks := s.AvailableBanks()
 	since := s.getLastProcessedDate(ctx)
+	notifCh := make(chan gTypes.Notification, 1)
+
+	notifClient := notifClientWrapper{
+		Client: twilio.Client{
+			AccountSid: s.Config.Twilio.AccountSid,
+			Token:      s.Config.Twilio.AuthToken,
+		},
+		From: s.Config.Twilio.FromNumber,
+		To:   s.Config.Twilio.ToNumber,
+	}
+
+	asyncErr := s.SendNotifications(ctx, notifClient, notifCh)
+	defer func(asyncErr <-chan error) {
+		close(notifCh)
+
+		err, ok := <-asyncErr
+		if ok {
+			s.log().Error("failed to send notifications", zap.Error(err))
+			e = err
+		}
+	}(asyncErr)
 
 	msgs, err := s.GetMessagesFromInbox(ctx, &mailCl, banks, since)
 	if err != nil {
@@ -130,9 +164,49 @@ func (s *Sync) Run(ctx context.Context) (e error) {
 		return err
 	}
 
-	cleanTxs := pipe.IgnoreOnError(ctx.Done(), txs)
+	cleanTxs := pipe.OnError(ctx.Done(), txs, func(tx *gTypes.TransactionInfo, err error) {
+		var errParse gTypes.ErrParseFailure
+		if errors.As(err, &errParse) {
+			notifCh <- gTypes.Notification{
+				Type: gTypes.Parse,
+				Date: errParse.Message.Envelope.Date,
+				Msg:  errParse.Cause.Error(),
+			}
+		} else {
+			s.log().Error(
+				"error processing message, not a ErrParseFailure type",
+				zap.Error(err),
+			)
+		}
+	})
 
 	savedTxs := s.SaveTransactions(ctx, toshlCl, cleanTxs)
+	savedTxs = pipe.Observe(ctx.Done(), savedTxs, func(r pipe.Result[*gTypes.TransactionInfo]) {
+		val := r.Value
+		if err := r.Error; err != nil {
+			var date time.Time = time.Now()
+			if r.Value != nil {
+				date = val.Date
+			}
+
+			notifCh <- gTypes.Notification{
+				Type: gTypes.Failed,
+				Date: date,
+				Msg:  err.Error(),
+			}
+		} else {
+			notifCh <- gTypes.Notification{
+				Type: gTypes.Success,
+				Date: val.Date,
+				Msg: fmt.Sprintf(
+					"$ %.2f %s",
+					val.Value.Number,
+					val.Place,
+				),
+			}
+		}
+	})
+
 	savedTxs, teeSavedTxs := pipe.Tee(ctx.Done(), savedTxs)
 	teeSavedTxs, teeSavedTxs2 := pipe.Tee(ctx.Done(), teeSavedTxs)
 
@@ -152,7 +226,7 @@ func (s *Sync) Run(ctx context.Context) (e error) {
 		return earliestDate, nil
 	})
 
-	asyncErr := s.ArchiveTransactions(ctx, &mailCl, successfulTxs)
+	asyncErr = s.ArchiveTransactions(ctx, &mailCl, successfulTxs)
 
 	for t := range teeSavedTxs2 {
 		tx := t.Value

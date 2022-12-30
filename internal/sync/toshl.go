@@ -146,7 +146,7 @@ func (cs *toshlCache) GetMappableAccount(id string) (string, error) {
 }
 
 func (s *Sync) createEntry(client toshlClient, cache *toshlCache, tx *types.TransactionInfo) (*toshl.Entry, error) {
-	const DateFormat = "2006-01-02"
+	const dateFormat = "2006-01-02"
 
 	accountID, err := cache.GetMappableAccount(tx.Account)
 	if err != nil {
@@ -174,7 +174,7 @@ func (s *Sync) createEntry(client toshlClient, cache *toshlCache, tx *types.Tran
 		panic(err)
 	}
 
-	newEntry.Date = tx.Date.In(location).Format(DateFormat)
+	newEntry.Date = tx.Date.In(location).Format(dateFormat)
 	description := fmt.Sprintf("** %s de %s", tx.Type, tx.Place)
 	newEntry.Description = &description
 	newEntry.Account = accountID

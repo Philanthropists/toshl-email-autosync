@@ -8,6 +8,7 @@ import (
 
 	"github.com/aws/aws-lambda-go/lambda"
 
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
 )
 
@@ -37,9 +38,21 @@ func getConfig() (types.Config, error) {
 }
 
 func HandleRequest(ctx context.Context) error {
-	_, _ = getConfig()
+	config, err := getConfig()
+	if err != nil {
+		return err
+	}
 
-	return nil
+	if GitCommit != "" && len(GitCommit) >= 3 {
+		ctx = context.WithValue(ctx, types.Version, GitCommit[:3])
+	}
+
+	sync := sync.Sync {
+		Config: config,
+		DryRun: false,
+	}
+
+	return sync.Run(ctx)
 }
 
 func main() {

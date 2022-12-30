@@ -18,7 +18,7 @@ build-for-lambda: bin clean vendor fmt credentials test
 	GOOS=linux \
 	GOARCH=amd64 \
 	CGO_ENABLED=0 \
-		 go build ${flags} -o bin/main cmd/aws-lambda/main.go
+		 go build ${flags} -o bin/main cmd/aws-lambda/run.go
 	cp credentials.json bin/
 
 .PHONY: build-docker

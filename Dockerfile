@@ -10,16 +10,16 @@ ENV LOC=/usr/local/bin
 
 COPY . .
 RUN GOOS=${GOOS} GOARCH=${GOARCH} CGO_ENABLED=${CGO_ENABLED} \
-		 go build \
-		 -ldflags="-s -w" \
-		 -o ${LOC}/main cmd/aws-lambda/run.go
+	go build \
+	-ldflags="-s -w" \
+	-o ${LOC}/main cmd/aws-lambda/run.go
 
 # ---
 
 FROM builder as tests
 
 RUN go test -v ./... && \
-		touch /empty
+	touch /empty
 
 # ---
 

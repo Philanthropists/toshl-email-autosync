@@ -36,7 +36,8 @@ RUN apk add --no-cache tzdata=2022f-r1
 
 COPY docker_entry.sh .
 ADD https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie .
-RUN chmod 500 aws-lambda-rie
+
+RUN chmod 755 aws-lambda-rie docker_entry.sh
 
 COPY --from=builder /usr/local/bin/main ./main
 COPY credentials.json .

@@ -2,7 +2,6 @@ package sync
 
 import (
 	"context"
-	"fmt"
 
 	mail "github.com/Philanthropists/toshl-email-autosync/v2/internal/mail/types"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/types"
@@ -33,7 +32,6 @@ func (s *Sync) ArchiveTransactions(ctx context.Context, mailCl mailMoveClient, t
 		defer close(res)
 
 		txsIds := pipe.Gather(ctx.Done(), txs, func(t *types.TransactionInfo) (*types.TransactionInfo, error) {
-			fmt.Printf("gathering tx: %v\n", t)
 			return t, nil
 		})
 

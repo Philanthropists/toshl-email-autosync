@@ -112,7 +112,10 @@ func (s *Sync) Run(ctx context.Context) (e error) {
 		}
 	}()
 
-	s.log().Info("running sync", zap.Bool("dryrun", s.DryRun))
+	s.log().Info("running sync",
+		zap.Bool("dryrun", s.DryRun),
+		zap.Reflect("version", ctx.Value(types.Version)),
+	)
 
 	mailCl := mail.Client{
 		Addr:     s.Config.Address,

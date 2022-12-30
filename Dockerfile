@@ -1,6 +1,4 @@
-FROM golang:1.19.2 as builder
-
-ARG COMMIT=dev
+FROM golang:1.19.3 as builder
 
 WORKDIR /usr/src/app
 
@@ -13,8 +11,8 @@ ENV LOC=/usr/local/bin
 COPY . .
 RUN GOOS=${GOOS} GOARCH=${GOARCH} CGO_ENABLED=${CGO_ENABLED} \
 		 go build \
-		 -ldflags="-s -w -X main.GitCommit=${COMMIT}" \
-		 -o ${LOC}/main cmd/aws-lambda/main.go
+		 -ldflags="-s -w" \
+		 -o ${LOC}/main cmd/aws-lambda/run.go
 
 # ---
 
@@ -25,16 +23,23 @@ RUN go test -v ./... && \
 
 # ---
 
-FROM alpine:3.16.0
+FROM alpine:3.17.0
+
+ARG COMMIT=dev
 
 WORKDIR /
 
 COPY --from=tests /empty .
 
 # Needed for getting timezone locale info (i.e. America/Bogota)
-RUN apk add --no-cache tzdata=2022c-r0
+RUN apk add --no-cache tzdata=2022f-r1
+
+COPY docker_entry.sh .
+ADD https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie .
+RUN chmod 500 aws-lambda-rie
 
 COPY --from=builder /usr/local/bin/main ./main
 COPY credentials.json .
+RUN echo "${COMMIT}" > ./version
 
-ENTRYPOINT [ "/main"]
+ENTRYPOINT ["/docker_entry.sh"]

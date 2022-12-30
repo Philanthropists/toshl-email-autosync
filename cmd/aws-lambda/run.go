@@ -12,9 +12,25 @@ import (
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
 )
 
-const credentialsFile = "credentials.json"
+const (
+	credentialsFile = "credentials.json"
+	versionFile     = "version"
+)
 
-var GitCommit string
+func getVersion() (string, error) {
+	f, err := os.Open(versionFile)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	raw, err := io.ReadAll(f)
+	if err != nil {
+		return "", err
+	}
+
+	return string(raw), nil
+}
 
 func getConfig() (types.Config, error) {
 	credFile, err := os.Open(credentialsFile)
@@ -43,11 +59,16 @@ func HandleRequest(ctx context.Context) error {
 		return err
 	}
 
-	if GitCommit != "" && len(GitCommit) >= 3 {
-		ctx = context.WithValue(ctx, types.Version, GitCommit[:3])
+	version, err := getVersion()
+	if err != nil {
+		return err
 	}
 
-	sync := sync.Sync {
+	if version != "" && len(version) >= 3 {
+		ctx = context.WithValue(ctx, types.Version, version[:3])
+	}
+
+	sync := sync.Sync{
 		Config: config,
 		DryRun: false,
 	}

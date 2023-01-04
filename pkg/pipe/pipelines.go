@@ -13,10 +13,7 @@ type Handler[T, K any] func(T) Result[K]
 
 func internalMapper[A, B any](mapper func(A) (B, error)) func(A) Result[B] {
 	if mapper == nil {
-		// nop function
-		return func(A) Result[B] {
-			return Result[B]{}
-		}
+		panic("mapper function cannot be nil")
 	}
 
 	return func(a A) Result[B] {
@@ -305,9 +302,7 @@ func Observe[T any](done <-chan struct{}, in <-chan T, observer func(T)) <-chan 
 				if !ok {
 					return
 				}
-				go func(v T) {
-					observer(v)
-				}(v)
+				observer(v)
 				select {
 				case <-done:
 					return
@@ -319,4 +314,27 @@ func Observe[T any](done <-chan struct{}, in <-chan T, observer func(T)) <-chan 
 	}()
 
 	return out
+}
+
+func OnClose[T any](done <-chan struct{}, in <-chan T, callback func()) <-chan T {
+	if in == nil {
+		panic("input channel cannot be nil")
+	}
+
+	if callback == nil {
+		return in
+	}
+
+	in, proxy := Tee(done, in)
+	go func(proxy <-chan T) {
+		for {
+			_, ok := <-proxy
+			if !ok {
+				callback()
+				return
+			}
+		}
+	}(proxy)
+
+	return in
 }

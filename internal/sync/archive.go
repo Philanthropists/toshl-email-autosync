@@ -31,9 +31,11 @@ func (s *Sync) ArchiveTransactions(ctx context.Context, mailCl mailMoveClient, t
 	go func() {
 		defer close(res)
 
-		txsIds := pipe.Gather(ctx.Done(), txs, func(t *types.TransactionInfo) (*types.TransactionInfo, error) {
-			return t, nil
-		})
+		txsIds := pipe.Gather(ctx.Done(), txs,
+			func(t *types.TransactionInfo) (*types.TransactionInfo, error) {
+				return t, nil
+			},
+		)
 
 		var ids []uint32
 		for _, id := range txsIds {
@@ -53,7 +55,9 @@ func (s *Sync) ArchiveTransactions(ctx context.Context, mailCl mailMoveClient, t
 		)
 
 		if s.DryRun {
-			s.log().Info("not moving messages to archive mailbox", zap.Bool("dryrun", s.DryRun))
+			s.log().Info("not moving messages to archive mailbox",
+				zap.Bool("dryrun", s.DryRun),
+			)
 			return
 		}
 

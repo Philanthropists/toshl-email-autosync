@@ -20,6 +20,7 @@ func (s *Sync) GetMessagesFromInbox(ctx context.Context, c mailClient, banks []t
 	s.log().Info("processing messages from mailbox",
 		zap.Reflect("since", since),
 		zap.String("mailbox", mailbox),
+		zap.String("mail", s.Config.Username),
 	)
 
 	msgs, err := c.Messages(ctx, mailbox, since)

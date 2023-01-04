@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"sync"
 	"time"
 
@@ -92,6 +93,8 @@ func (c *Client) Messages(ctx context.Context, box types.Mailbox, since time.Tim
 		return nil, err
 	}
 
+	log.Printf("Messages to process: %d\n", len(ids))
+
 	seqset := new(_imap.SeqSet)
 	seqset.AddNum(ids...)
 
@@ -153,7 +156,10 @@ func getCompleteMessage(_msg *_imap.Message) (types.Message, error) {
 func getMessageBody(_msg *_imap.Message) ([]byte, error) {
 	var section _imap.BodySectionName
 	t := _msg.GetBody(&section)
-	mr, _ := mail.CreateReader(t)
+	mr, err := mail.CreateReader(t)
+	if err != nil {
+		return nil, fmt.Errorf("could not create reader: %w", err)
+	}
 
 	var body []byte
 	for body == nil {
@@ -165,7 +171,10 @@ func getMessageBody(_msg *_imap.Message) ([]byte, error) {
 		switch p.Header.(type) {
 		case *mail.InlineHeader:
 			// This is the message's text (can be plain-text or HTML)
-			body, _ = io.ReadAll(p.Body)
+			body, err = io.ReadAll(p.Body)
+			if err != nil {
+				return nil, fmt.Errorf("could not read from InlineHeader body: %w", err)
+			}
 		}
 	}
 

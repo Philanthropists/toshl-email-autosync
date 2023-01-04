@@ -45,6 +45,9 @@ func (s *Sync) LastProcessedDate(ctx context.Context, client itemNosqlClient) (t
 		return time.Time{}, fmt.Errorf("item field [%s] is not a string representing a date: %w", dateStr, err)
 	}
 
+	const oneDayBefore time.Duration = -24 * time.Hour
+	selectedDate = selectedDate.Add(oneDayBefore)
+
 	return selectedDate, nil
 }
 

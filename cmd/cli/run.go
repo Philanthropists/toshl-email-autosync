@@ -52,6 +52,8 @@ func main() {
 	ctx := context.Background()
 	if GitCommit != "" && len(GitCommit) >= 3 {
 		ctx = context.WithValue(ctx, types.Version, GitCommit[:3])
+	} else {
+		ctx = context.WithValue(ctx, types.Version, "dev")
 	}
 
 	execute := flag.Bool("execute", false, "execute actual changes")

@@ -84,6 +84,10 @@ var regexMatching = []*regexp_util.Match[entity.TransactionType]{
 		Regexp: regexp.MustCompile(`Bancolombia le informa un (?P<type>[\w\s]+) de (?P<place>[\w\s\.]+) por \$(?P<value>[0-9,\.]+) en su Cuenta (?P<account>\w+)\.`),
 		Value:  entity.Income,
 	},
+	{
+		Regexp: regexp.MustCompile(`Bancolombia te informa (?P<type>[\w\s]+) por \$(?P<value>[0-9,\.]+) a (?P<place>[\w\s\.]+) desde producto \*(?P<account>\w+)\.`),
+		Value:  entity.Expense,
+	},
 }
 
 func (b Bancolombia) ExtractTransactionInfoFromMessage(msg entity.Message) (*entity.TransactionInfo, error) {

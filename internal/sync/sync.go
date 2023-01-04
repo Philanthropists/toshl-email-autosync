@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"runtime"
 	"time"
 
@@ -21,6 +22,10 @@ import (
 
 var (
 	sinceFallbackDate time.Time = time.Now().Add(-30 * 24 * 60 * 60 * time.Second) // 30 days
+)
+
+const (
+	OverrideLasProcessedDateEnvName = "OVERRIDE_LAST_PROC_DATE"
 )
 
 type Sync struct {
@@ -62,8 +67,29 @@ func (s *Sync) getDynamoClient(ctx context.Context) (dynamodb.Client, error) {
 	return dynamoClient, err
 }
 
-func (s *Sync) getLastProcessedDate(ctx context.Context) time.Time {
+func (s *Sync) getLastProcessedDateOverride() (time.Time, bool) {
+	if dateStr := os.Getenv(OverrideLasProcessedDateEnvName); dateStr != "" {
+		const dateFormat = "2006-01-02"
+
+		selectedDate, err := time.Parse(dateFormat, dateStr)
+		logCtx := s.log().With(zap.Time("date_override", selectedDate))
+		if err == nil {
+			logCtx.Info("date is overriden")
+			return selectedDate, true
+		} else {
+			logCtx.Error("override is set, but it is invalid")
+		}
+	}
+
+	return time.Time{}, false
+}
+
+func (s *Sync) GetLastProcessedDate(ctx context.Context) time.Time {
 	logCtx := s.log().With(zap.Time("fallbackDate", sinceFallbackDate))
+
+	if overrideDate, ok := s.getLastProcessedDateOverride(); ok {
+		return overrideDate
+	}
 
 	client, err := s.getDynamoClient(ctx)
 	if err != nil {
@@ -130,28 +156,7 @@ func (s *Sync) Run(ctx context.Context) (e error) {
 	}()
 
 	banks := s.AvailableBanks()
-	since := s.getLastProcessedDate(ctx)
-	notifCh := make(chan gTypes.Notification, 1)
-
-	notifClient := notifClientWrapper{
-		Client: twilio.Client{
-			AccountSid: s.Config.Twilio.AccountSid,
-			Token:      s.Config.Twilio.AuthToken,
-		},
-		From: s.Config.Twilio.FromNumber,
-		To:   s.Config.Twilio.ToNumber,
-	}
-
-	asyncErr := s.SendNotifications(ctx, notifClient, notifCh)
-	defer func(asyncErr <-chan error) {
-		close(notifCh)
-
-		err, ok := <-asyncErr
-		if ok {
-			s.log().Error("failed to send notifications", zap.Error(err))
-			e = err
-		}
-	}(asyncErr)
+	since := s.GetLastProcessedDate(ctx)
 
 	msgs, err := s.GetMessagesFromInbox(ctx, &mailCl, banks, since)
 	if err != nil {
@@ -162,53 +167,18 @@ func (s *Sync) Run(ctx context.Context) (e error) {
 
 	txs := s.ExtractTransactionInfoFromMessages(ctx, matchedMsgs)
 
+	var notifChans []<-chan gTypes.Notification
+
+	cleanTxs, notifChParse := s.notifyParseErrors(ctx, txs)
+	notifChans = append(notifChans, notifChParse)
+
 	toshlCl, err := toshl.NewToshlClient(s.Config.Toshl.Token)
 	if err != nil {
 		return err
 	}
 
-	cleanTxs := pipe.OnError(ctx.Done(), txs, func(tx *gTypes.TransactionInfo, err error) {
-		var errParse gTypes.ErrParseFailure
-		if errors.As(err, &errParse) {
-			notifCh <- gTypes.Notification{
-				Type: gTypes.Parse,
-				Date: errParse.Message.Envelope.Date,
-				Msg:  errParse.Cause.Error(),
-			}
-		} else {
-			s.log().Error(
-				"error processing message, not a ErrParseFailure type",
-				zap.Error(err),
-			)
-		}
-	})
-
-	savedTxs := s.SaveTransactions(ctx, toshlCl, cleanTxs)
-	savedTxs = pipe.Observe(ctx.Done(), savedTxs, func(r pipe.Result[*gTypes.TransactionInfo]) {
-		val := r.Value
-		if err := r.Error; err != nil {
-			var date time.Time = time.Now()
-			if r.Value != nil {
-				date = val.Date
-			}
-
-			notifCh <- gTypes.Notification{
-				Type: gTypes.Failed,
-				Date: date,
-				Msg:  err.Error(),
-			}
-		} else {
-			notifCh <- gTypes.Notification{
-				Type: gTypes.Success,
-				Date: val.Date,
-				Msg: fmt.Sprintf(
-					"$ %.2f %s",
-					val.Value.Number,
-					val.Place,
-				),
-			}
-		}
-	})
+	savedTxs, notifChTxs := s.notifyTxErrors(ctx, toshlCl, cleanTxs)
+	notifChans = append(notifChans, notifChTxs)
 
 	savedTxs, teeSavedTxs := pipe.Tee(ctx.Done(), savedTxs)
 	teeSavedTxs, teeSavedTxs2 := pipe.Tee(ctx.Done(), teeSavedTxs)
@@ -216,46 +186,75 @@ func (s *Sync) Run(ctx context.Context) (e error) {
 	successfulTxs := pipe.IgnoreOnError(ctx.Done(), savedTxs)
 	failedTxs := pipe.OnlyOnError(ctx.Done(), teeSavedTxs)
 
-	asyncDate := pipe.AsyncResult(ctx.Done(), func() (time.Time, error) {
-		earliestDate := time.Now().Add(-24 * time.Hour)
-		for v := range failedTxs {
-			t := v.Value
-			date := t.Date
-			if date.Before(earliestDate) {
-				earliestDate = date
+	asyncDate := pipe.AsyncResult(ctx.Done(),
+		func() (time.Time, error) {
+			const oneDayBefore time.Duration = -24 * time.Hour
+
+			earliestDate := time.Now().Add(oneDayBefore)
+			for v := range failedTxs {
+				t := v.Value
+				date := t.Date
+				if date.Before(earliestDate) {
+					earliestDate = date
+				}
+			}
+
+			return earliestDate, nil
+		},
+	)
+
+	go func() {
+		for t := range teeSavedTxs2 {
+			tx := t.Value
+			logCtx := s.log().With(
+				zap.Reflect("date", tx.Date),
+				zap.String("account", tx.Account),
+				zap.String("place", tx.Place),
+				zap.Reflect("value", tx.Value),
+				zap.String("bank", tx.Bank.String()),
+			)
+
+			if t.Error == nil {
+				logCtx.Info("created entry for transaction")
+			} else {
+				logCtx.Error("failed to create entry for transaction",
+					zap.Error(t.Error),
+				)
 			}
 		}
+	}()
 
-		return earliestDate, nil
-	})
-
-	asyncErr = s.ArchiveTransactions(ctx, &mailCl, successfulTxs)
-
-	for t := range teeSavedTxs2 {
-		tx := t.Value
-		logCtx := s.log().With(
-			zap.Reflect("date", tx.Date),
-			zap.String("account", tx.Account),
-			zap.String("place", tx.Place),
-			zap.Reflect("value", tx.Value),
-			zap.String("bank", tx.Bank.String()),
-		)
-
-		if t.Error == nil {
-			logCtx.Info("created entry for transaction")
-		} else {
-			logCtx.Error("failed to create entry for transaction", zap.Error(t.Error))
-		}
+	notifClient := notifClientWrapper{
+		Client: twilio.Client{
+			AccountSid: s.Config.Twilio.AccountSid,
+			Token:      s.Config.Twilio.AuthToken,
+		},
+		From: s.Config.Twilio.FromNumber,
+		To:   s.Config.Twilio.ToNumber,
 	}
 
-	archiveErr, ok := <-asyncErr
+	notifications := pipe.FanIn(ctx.Done(), notifChans...)
+	asyncErr := s.SendNotifications(ctx, notifClient, notifications)
+	defer func(asyncErr <-chan error) {
+		err, ok := <-asyncErr
+		if ok {
+			s.log().Error("failed to send notifications", zap.Error(err))
+			e = err
+		}
+	}(asyncErr)
+
+	archiveErr, ok := <-s.ArchiveTransactions(ctx, &mailCl, successfulTxs)
 	if ok && archiveErr != nil {
-		s.log().Error("failed to archive transaction emails", zap.Error(archiveErr))
+		s.log().Error("failed to archive transaction emails",
+			zap.Error(archiveErr),
+		)
 	}
 
 	if client, err := s.getDynamoClient(ctx); err == nil {
 		newDate := (<-asyncDate).Value
-		s.log().Info("updating last processed date", zap.Reflect("date", newDate))
+		s.log().Info("updating last processed date",
+			zap.Time("date", newDate),
+		)
 
 		err = s.UpdateLastProcessedDate(ctx, client, newDate)
 		if err != nil {
@@ -270,4 +269,76 @@ func (s *Sync) Run(ctx context.Context) (e error) {
 	}
 
 	return nil
+}
+
+func (s Sync) notifyParseErrors(
+	ctx context.Context,
+	txs <-chan pipe.Result[*gTypes.TransactionInfo],
+) (<-chan *gTypes.TransactionInfo, <-chan gTypes.Notification) {
+
+	notifChParse := make(chan gTypes.Notification)
+	cleanTxs := pipe.OnError(ctx.Done(), txs,
+		func(tx *gTypes.TransactionInfo, err error) {
+			var errParse gTypes.ErrParseFailure
+			if errors.As(err, &errParse) {
+				notifChParse <- gTypes.Notification{
+					Type: gTypes.Parse,
+					Date: errParse.Message.Envelope.Date,
+					Msg:  errParse.Cause.Error(),
+				}
+			} else {
+				s.log().Error(
+					"error processing message, not an ErrParseFailure type",
+					zap.Error(err),
+				)
+			}
+		},
+	)
+	cleanTxs = pipe.OnClose(ctx.Done(), cleanTxs, func() {
+		close(notifChParse)
+	})
+
+	return cleanTxs, notifChParse
+}
+
+func (s Sync) notifyTxErrors(
+	ctx context.Context,
+	toshlCl toshl.Client,
+	cleanTxs <-chan *gTypes.TransactionInfo,
+) (<-chan pipe.Result[*gTypes.TransactionInfo], <-chan gTypes.Notification) {
+
+	notifChTxs := make(chan gTypes.Notification)
+	savedTxs := s.SaveTransactions(ctx, toshlCl, cleanTxs)
+	savedTxs = pipe.Observe(ctx.Done(), savedTxs,
+		func(r pipe.Result[*gTypes.TransactionInfo]) {
+			val := r.Value
+			if err := r.Error; err != nil {
+				var date time.Time = time.Now()
+				if r.Value != nil {
+					date = val.Date
+				}
+
+				notifChTxs <- gTypes.Notification{
+					Type: gTypes.Failed,
+					Date: date,
+					Msg:  err.Error(),
+				}
+			} else {
+				notifChTxs <- gTypes.Notification{
+					Type: gTypes.Success,
+					Date: val.Date,
+					Msg: fmt.Sprintf(
+						"$ %.2f %s",
+						val.Value.Number,
+						val.Place,
+					),
+				}
+			}
+		},
+	)
+	savedTxs = pipe.OnClose(ctx.Done(), savedTxs, func() {
+		close(notifChTxs)
+	})
+
+	return savedTxs, notifChTxs
 }

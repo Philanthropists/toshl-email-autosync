@@ -8,7 +8,10 @@ RUN go mod download && go mod verify
 ENV GOOS=linux GOARCH=amd64 CGO_ENABLED=0
 ENV LOC=/usr/local/bin
 
-COPY . .
+COPY cmd/aws-lambda ./cmd/aws-lambda
+COPY internal ./internal
+COPY pkg ./pkg
+
 RUN GOOS=${GOOS} GOARCH=${GOARCH} CGO_ENABLED=${CGO_ENABLED} \
 	go build \
 	-ldflags="-s -w" \

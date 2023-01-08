@@ -41,6 +41,7 @@ type TransactionInfo struct {
 }
 
 type BankDelegate interface {
+	ComesFrom(from []string) bool
 	FilterMessage(message Message) bool
 	ExtractTransactionInfoFromMessage(message Message) (*TransactionInfo, error)
 	String() string

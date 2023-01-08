@@ -77,6 +77,11 @@ func main() {
 
 	fmt.Println("Messages from INBOX ----")
 	for m := range msgs {
-		fmt.Printf("%d - %s - size: %d\n", m.SeqNum, m.Envelope.Subject, len(m.RawBody))
+		msg := m.Value
+		if m.Error == nil {
+			fmt.Printf("%d - %s - size: %d - %s\n", msg.SeqNum, msg.Envelope.Subject, len(msg.RawBody), msg.Envelope.Date.Format(time.RFC822))
+		} else {
+			fmt.Printf("%d - %s - size: %d - %s - Error: %v\n", msg.SeqNum, msg.Envelope.Subject, len(msg.RawBody), msg.Envelope.Date.Format(time.RFC822), m.Error)
+		}
 	}
 }

@@ -96,6 +96,17 @@ var regexpExpressions []regexpTest = []regexpTest{
 			},
 		},
 	},
+	{
+		Body: "Bancolombia le informa Compra por $23.050,00 en RAPPI RESTAURANTE 11:25. 04/01/2023 T.Cred *3616.",
+		Result: result{
+			Result: transInfo{
+				TransactionType: types.Expense,
+				Place:           "RAPPI RESTAURANTE 11:25",
+				Account:         "3616",
+				Value:           generateCurrency(CopCode, 23050.0),
+			},
+		},
+	},
 }
 
 func generateCurrency(code string, rate float64) types.Amount {

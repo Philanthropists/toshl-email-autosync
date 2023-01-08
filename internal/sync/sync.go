@@ -11,6 +11,7 @@ import (
 	zap "go.uber.org/zap"
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/mail"
+	mTypes "github.com/Philanthropists/toshl-email-autosync/v2/internal/mail/types"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/notification/twilio"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/store/nosql/dynamodb"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/store/saas/toshl"
@@ -157,17 +158,17 @@ func (s *Sync) Run(ctx context.Context) (e error) {
 
 	banks := s.AvailableBanks()
 	since := s.GetLastProcessedDate(ctx)
+	var notifChans []<-chan gTypes.Notification
 
 	msgs, err := s.GetMessagesFromInbox(ctx, &mailCl, banks, since)
 	if err != nil {
 		return err
 	}
 
-	matchedMsgs := pipe.IgnoreOnError(ctx.Done(), msgs)
+	matchedMsgs, notifChMsgs := s.notifyMailErrors(ctx, msgs)
+	notifChans = append(notifChans, notifChMsgs)
 
 	txs := s.ExtractTransactionInfoFromMessages(ctx, matchedMsgs)
-
-	var notifChans []<-chan gTypes.Notification
 
 	cleanTxs, notifChParse := s.notifyParseErrors(ctx, txs)
 	notifChans = append(notifChans, notifChParse)
@@ -269,6 +270,30 @@ func (s *Sync) Run(ctx context.Context) (e error) {
 	}
 
 	return nil
+}
+
+func (s Sync) notifyMailErrors(
+	ctx context.Context,
+	msgs <-chan pipe.Result[*gTypes.BankMessage],
+) (<-chan *gTypes.BankMessage, <-chan gTypes.Notification) {
+	notifChMsgs := make(chan gTypes.Notification)
+	cleanMsgs := pipe.OnError(ctx.Done(), msgs,
+		func(msg *gTypes.BankMessage, err error) {
+			var errMsg mTypes.ErrInternal
+			if errors.As(err, &errMsg) && msg != nil {
+				notifChMsgs <- gTypes.Notification{
+					Type: gTypes.Failed,
+					Date: msg.Envelope.Date,
+					Msg:  errors.Cause(err).Error(),
+				}
+			}
+		},
+	)
+	cleanMsgs = pipe.OnClose(ctx.Done(), cleanMsgs, func() {
+		close(notifChMsgs)
+	})
+
+	return cleanMsgs, notifChMsgs
 }
 
 func (s Sync) notifyParseErrors(

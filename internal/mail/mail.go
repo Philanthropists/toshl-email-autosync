@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"sync"
 	"time"
 
@@ -75,7 +74,7 @@ func (c *Client) Mailboxes() ([]types.Mailbox, error) {
 	return mailboxes, nil
 }
 
-func (c *Client) Messages(ctx context.Context, box types.Mailbox, since time.Time) (<-chan *types.Message, error) {
+func (c *Client) Messages(ctx context.Context, box types.Mailbox, since time.Time) (<-chan pipe.Result[*types.Message], error) {
 	client, err := c.client()
 	if err != nil {
 		return nil, err
@@ -92,8 +91,6 @@ func (c *Client) Messages(ctx context.Context, box types.Mailbox, since time.Tim
 	if err != nil {
 		return nil, err
 	}
-
-	log.Printf("Messages to process: %d\n", len(ids))
 
 	seqset := new(_imap.SeqSet)
 	seqset.AddNum(ids...)
@@ -136,15 +133,18 @@ func (c *Client) Messages(ctx context.Context, box types.Mailbox, since time.Tim
 		return &msg, err
 	})
 
-	filteredMsgs := pipe.IgnoreOnError(newCtx.Done(), msgs)
-
-	return filteredMsgs, nil
+	return msgs, nil
 }
 
 func getCompleteMessage(_msg *_imap.Message) (types.Message, error) {
 	body, err := getMessageBody(_msg)
 	if err != nil {
-		return types.Message{}, err
+		return types.Message{
+				Message: _msg,
+			}, types.ErrInternal{
+				CauseErr: err,
+				Msg:      "could not get message body",
+			}
 	}
 
 	return types.Message{
@@ -157,7 +157,7 @@ func getMessageBody(_msg *_imap.Message) ([]byte, error) {
 	var section _imap.BodySectionName
 	t := _msg.GetBody(&section)
 	mr, err := mail.CreateReader(t)
-	if err != nil {
+	if err != nil && mr == nil {
 		return nil, fmt.Errorf("could not create reader: %w", err)
 	}
 

@@ -18,25 +18,31 @@ func (b Bancolombia) String() string {
 	return "Bancolombia"
 }
 
+func (b Bancolombia) ComesFrom(from []string) bool {
+	for _, f := range from {
+		switch f {
+		case "alertasynotificaciones@notificacionesbancolombia.com":
+			fallthrough
+		case "alertasynotificaciones@bancolombia.com.co":
+			return true
+		}
+	}
+
+	return false
+}
+
 func (b Bancolombia) FilterMessage(msg entity.Message) bool {
 	keep := true
 	keep = keep && msg.Message != nil
 	keep = keep && msg.Message.Envelope != nil
 
 	if keep {
-		keep = false
+		var from []string
 		for _, address := range msg.Message.Envelope.From {
-			from := address.Address()
-			if from == "alertasynotificaciones@notificacionesbancolombia.com" {
-				keep = true
-				break
-			}
-
-			if from == "alertasynotificaciones@bancolombia.com.co" {
-				keep = true
-				break
-			}
+			f := address.Address()
+			from = append(from, f)
 		}
+		keep = b.ComesFrom(from)
 	}
 
 	if keep {

@@ -10,6 +10,7 @@ import (
 	"github.com/zeebo/errs"
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/bank"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/logging"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/dateprocessingrepo"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/mailrepo"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
@@ -42,13 +43,21 @@ func getDependencies(ctx context.Context, config types.Config) (*Dependencies, e
 		return nil, err
 	}
 
-	imapClient, err := getEmailClient(
-		config.Mail.Address,
-		config.Mail.Username,
-		config.Mail.Password,
-	)
-	if err != nil {
-		return nil, err
+	addr, user, pass := config.Mail.Address, config.Mail.Username, config.Mail.Password
+	newImapClientFunc := func() mailrepo.IMAPClient {
+		log := logging.New()
+		defer func() { _ = log.Sync() }()
+
+		cl, err := getEmailClient(addr, user, pass)
+		if err != nil {
+			log.Error("could not create imap client", logging.Error(err))
+
+			return nil
+		}
+
+		log.Debug("created an IMAP client")
+
+		return cl
 	}
 
 	return &Dependencies{
@@ -58,7 +67,7 @@ func getDependencies(ctx context.Context, config types.Config) (*Dependencies, e
 			DynamoDBClient: dynamoClient,
 		},
 		MailRepo: &mailrepo.IMAPRepository{
-			IMAPClient: imapClient,
+			NewImapFunc: newImapClientFunc,
 		},
 	}, nil
 }

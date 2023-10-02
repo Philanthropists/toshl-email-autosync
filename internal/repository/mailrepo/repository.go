@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"runtime"
 	"sync"
 	"time"
 
@@ -14,13 +15,13 @@ import (
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/logging"
 )
 
-type imapClient interface {
+type IMAPClient interface {
 	List(ref string, name string, ch chan *imap.MailboxInfo) error
 	Select(name string, readOnly bool) (*imap.MailboxStatus, error)
-	Search(criteria *imap.SearchCriteria) (seqNums []uint32, err error)
-	Fetch(seqset *imap.SeqSet, items []imap.FetchItem, ch chan *imap.Message) error
+	UidSearch(criteria *imap.SearchCriteria) (seqNums []uint32, err error)
+	UidFetch(seqset *imap.SeqSet, items []imap.FetchItem, ch chan *imap.Message) error
 	// Copy(seqset *imap.SeqSet, dest string) error
-	Store(seqset *imap.SeqSet, item imap.StoreItem, value interface{}, ch chan *imap.Message) error
+	UidStore(*imap.SeqSet, imap.StoreItem, interface{}, chan *imap.Message) error
 }
 
 type Message struct {
@@ -84,10 +85,31 @@ func (e MessageErrs) Unwrap() []error {
 }
 
 type IMAPRepository struct {
-	IMAPClient  imapClient
-	NewImapFunc func() imapClient
+	NewImapFunc func() IMAPClient
 
-	clPool sync.Pool
+	poolOnce sync.Once
+	clPool   sync.Pool
+}
+
+func (r *IMAPRepository) getClient() IMAPClient {
+	r.poolOnce.Do(func() {
+		f := func() any {
+			return r.NewImapFunc()
+		}
+		r.clPool = sync.Pool{
+			New: f,
+		}
+	})
+
+	cl := r.clPool.Get()
+	if cl == nil {
+		log := logging.New()
+		defer func() { _ = log.Sync() }()
+
+		log.Panic("could not create imap client")
+	}
+
+	return cl.(IMAPClient)
 }
 
 func (r *IMAPRepository) GetAvailableMailboxes(
@@ -97,7 +119,7 @@ func (r *IMAPRepository) GetAvailableMailboxes(
 	errCh := make(chan error)
 	go func() {
 		defer close(errCh)
-		errCh <- r.IMAPClient.List("", "*", rawMailboxes)
+		errCh <- r.getClient().List("", "*", rawMailboxes)
 	}()
 
 	var (
@@ -134,14 +156,16 @@ func (r *IMAPRepository) GetMessagesFromMailbox(
 	mailbox string,
 	since time.Time,
 ) (<-chan MessageErr, error) {
-	_, err := r.IMAPClient.Select(mailbox, true)
+	client := r.getClient()
+
+	_, err := client.Select(mailbox, true)
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
 
 	criteria := imap.NewSearchCriteria()
 	criteria.Since = since
-	ids, err := r.IMAPClient.Search(criteria)
+	ids, err := client.UidSearch(criteria)
 	if err != nil {
 		return nil, err
 	}
@@ -153,11 +177,71 @@ func (r *IMAPRepository) GetMessagesFromMailbox(
 		logging.Int("len", len(ids)),
 	)
 
+	routines := runtime.NumCPU()
+	buckets, err := divideSlice(routines, ids)
+	if err != nil {
+		return nil, errs.Wrap(err)
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+
+	msgs := make(chan MessageErr, routines)
+
+	var wg sync.WaitGroup
+	wg.Add(routines)
+	for i := 0; i < routines; i++ {
+		go func(ctx context.Context, ids []uint32, out chan<- MessageErr) {
+			defer wg.Done()
+			msgs, err := r.getMessagesFromMailbox(ctx, mailbox, ids...)
+			if err != nil {
+				log.Error("could not get messages from message bucket",
+					logging.Error(err),
+				)
+			}
+
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case m, ok := <-msgs:
+					if !ok {
+						return
+					}
+					select {
+					case <-ctx.Done():
+						return
+					case out <- m:
+					}
+				}
+			}
+		}(ctx, buckets[i], msgs)
+	}
+
+	go func() {
+		defer cancel()
+		defer close(msgs)
+		wg.Wait()
+	}()
+
+	return msgs, nil
+}
+
+func (r *IMAPRepository) getMessagesFromMailbox(
+	ctx context.Context,
+	mailbox string,
+	ids ...uint32,
+) (<-chan MessageErr, error) {
+	client := r.getClient()
+
+	_, err := client.Select(mailbox, true)
+	if err != nil {
+		return nil, errs.Wrap(err)
+	}
+
 	seqset := new(imap.SeqSet)
 	seqset.AddNum(ids...)
 
-	const bufferSize = 10
-	messages := make(chan *imap.Message, bufferSize)
+	messages := make(chan *imap.Message)
 
 	errCh := make(chan error)
 	go func() {
@@ -165,7 +249,7 @@ func (r *IMAPRepository) GetMessagesFromMailbox(
 
 		var section imap.BodySectionName
 		fetch := []imap.FetchItem{section.FetchItem(), imap.FetchEnvelope}
-		fetchErr := r.IMAPClient.Fetch(seqset, fetch, messages)
+		fetchErr := client.UidFetch(seqset, fetch, messages)
 		if fetchErr != nil {
 			fetchErr = errs.New("failed to fetch messages: %w", fetchErr)
 		}
@@ -174,7 +258,7 @@ func (r *IMAPRepository) GetMessagesFromMailbox(
 	}()
 
 	ctx, cancel := context.WithCancel(ctx)
-	msgs := r.getCompleteMessages(ctx, messages)
+	msgs := r.getCompleteMessages(ctx, mailbox, messages)
 
 	go func() {
 		select {
@@ -197,60 +281,67 @@ func (r *IMAPRepository) GetMessagesFromMailbox(
 	return msgs, nil
 }
 
-func (r *IMAPRepository) getCompleteMessages(
-	ctx context.Context,
-	msgs <-chan *imap.Message,
-) <-chan MessageErr {
-	const bufferSize = 40
-	out := make(chan MessageErr, bufferSize)
-
-	const n = bufferSize
-	var wg sync.WaitGroup
-	wg.Add(n)
-	for i := 0; i < n; i++ {
-		go func(done <-chan struct{}) {
-			defer wg.Done()
-
-			for {
-				select {
-				case <-done:
-					return
-				case m, ok := <-msgs:
-					if !ok {
-						return
-					}
-
-					msg, err := r.getCompleteMessage(done, m)
-					select {
-					case <-done:
-						return
-					case out <- MessageErr{
-						Err: err,
-						Msg: msg,
-					}:
-					}
-
-				}
-			}
-		}(ctx.Done())
+func divideSlice[T any](n int, v []T) ([][]T, error) {
+	if n == 0 {
+		return nil, errs.New("n:%d cannot be zero", n)
 	}
 
-	go func(ctx context.Context) {
-		defer close(out)
-		wg.Wait()
-		if err := ctx.Err(); err != nil {
-			log := logging.New()
-			defer func() { _ = log.Sync() }()
+	div := make(map[int][]T, n)
+	for i, val := range v {
+		idx := i % n
+		l := div[idx]
+		l = append(l, val)
+		div[idx] = l
+	}
 
-			log.Warn("context ended with error", logging.Error(err))
+	var b [][]T
+	for _, v := range div {
+		b = append(b, v)
+	}
+
+	return b, nil
+}
+
+func (r *IMAPRepository) getCompleteMessages(
+	ctx context.Context,
+	mailbox string,
+	msgs <-chan *imap.Message,
+) <-chan MessageErr {
+	out := make(chan MessageErr)
+
+	go func() {
+		defer close(out)
+		for {
+			var (
+				m  *imap.Message
+				ok bool
+			)
+			select {
+			case <-ctx.Done():
+				return
+
+			case m, ok = <-msgs:
+				if !ok {
+					return
+				}
+			}
+
+			msg, err := r.getCompleteMessage(m)
+			select {
+			case <-ctx.Done():
+				return
+			case out <- MessageErr{
+				Err: err,
+				Msg: msg,
+			}:
+			}
 		}
-	}(ctx)
+	}()
 
 	return out
 }
 
 func (r *IMAPRepository) getCompleteMessage(
-	done <-chan struct{},
 	msg *imap.Message,
 ) (Message, error) {
 	var section imap.BodySectionName

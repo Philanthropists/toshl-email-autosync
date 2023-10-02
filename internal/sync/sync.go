@@ -124,14 +124,14 @@ func (s *Sync) Run(ctx context.Context) (genErr error) {
 		return err
 	}
 
-	log.Info("got messages", logging.Int("len", len(messages)))
-
 	i := 0
 	for me := range messages {
 		m := me.Msg
-		fmt.Printf("%d: %v -- %s (%d bytes)\n", i, m.Subject(), m.Date(), len(m.Body()))
+		fmt.Printf("%d: %v -- %s (%d bytes)\n", m.ID(), m.Subject(), m.Date(), len(m.Body()))
 		i++
 	}
+
+	log.Info("got messages", logging.Int("len", i))
 
 	// TODO: when processing each mail, get each user config for handling notifications (use a cache aswell)
 

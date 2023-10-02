@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	"time"
 
 	"github.com/aws/aws-lambda-go/lambda"
 
@@ -72,6 +73,10 @@ func HandleRequest(ctx context.Context) error {
 		Config: config,
 		DryRun: false,
 	}
+
+	const awsTimeout = 140 * time.Second
+	ctx, cancel := context.WithTimeout(ctx, awsTimeout)
+	defer cancel()
 
 	return sync.Run(ctx)
 }

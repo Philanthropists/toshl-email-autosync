@@ -73,7 +73,6 @@ func main() {
 	sync := sync.Sync{
 		Config: config,
 		DryRun: !*execute,
-		Log:    logger,
 	}
 
 	if *timeout != 0 {

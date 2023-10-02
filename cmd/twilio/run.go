@@ -7,7 +7,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/notification/twilio"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/external/twilio"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
 )
 
@@ -53,7 +53,7 @@ func main() {
 		Token:      config.Twilio.AuthToken,
 	}
 
-	var toNumber string = config.ToNumber
+	var toNumber string = "" // config.ToNumber
 	if to != nil && *to != "" {
 		toNumber = *to
 	}

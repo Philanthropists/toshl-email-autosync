@@ -1,6 +1,6 @@
 module github.com/Philanthropists/toshl-email-autosync/v2
 
-go 1.19
+go 1.21
 
 require (
 	github.com/Philanthropists/toshl-go v0.1.9
@@ -11,10 +11,11 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.17.7
 	github.com/emersion/go-imap v1.2.1
 	github.com/emersion/go-message v0.15.0
-	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.8.0
 	github.com/twilio/twilio-go v1.2.1
+	github.com/zeebo/errs v1.3.0
 	go.uber.org/zap v1.23.0
+	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
 )
 
 require (
@@ -36,6 +37,7 @@ require (
 	github.com/emersion/go-textwrapper v0.0.0-20200911093747-65d896831594 // indirect
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect

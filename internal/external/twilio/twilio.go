@@ -2,11 +2,13 @@ package twilio
 
 import (
 	"encoding/json"
-	"errors"
 
 	_twilio "github.com/twilio/twilio-go"
 	twilioApi "github.com/twilio/twilio-go/rest/api/v2010"
+	"github.com/zeebo/errs"
 )
+
+var twilioErr = errs.Class("twilio")
 
 type Client struct {
 	AccountSid string
@@ -26,11 +28,15 @@ func (c *Client) client() *_twilio.RestClient {
 	return c.tc
 }
 
-func (c *Client) SendMessage(from, to, msg string) ([]byte, error) {
+func (c *Client) SendMessage(from, to, msg string) (_ []byte, genErr error) {
+	defer func() {
+		genErr = twilioErr.Wrap(genErr)
+	}()
+
 	tc := c.client()
 
 	if from == "" || to == "" || msg == "" {
-		return nil, errors.New("none of the parameters can be empty")
+		return nil, errs.New("none of the parameters can be empty")
 	}
 
 	ps := &twilioApi.CreateMessageParams{}
@@ -40,12 +46,12 @@ func (c *Client) SendMessage(from, to, msg string) ([]byte, error) {
 
 	message, err := tc.Api.CreateMessage(ps)
 	if err != nil {
-		return nil, err
+		return nil, errs.Wrap(err)
 	}
 
 	response, err := json.Marshal(*message)
 	if err != nil {
-		return nil, err
+		return nil, errs.Wrap(err)
 	}
 
 	return response, nil

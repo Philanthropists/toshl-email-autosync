@@ -28,7 +28,7 @@ func internalMapper[A, B any](mapper func(A) (B, error)) func(A) Result[B] {
 // Multiplexes multiple channels into a single one
 func FanIn[T any](done <-chan struct{}, channels ...<-chan T) <-chan T {
 	var wg sync.WaitGroup
-	multiplexedStream := make(chan T)
+	multiplexedStream := make(chan T, len(channels))
 
 	multiplex := func(c <-chan T) {
 		defer wg.Done()
@@ -57,7 +57,7 @@ func FanIn[T any](done <-chan struct{}, channels ...<-chan T) <-chan T {
 
 // Ensures that the goroutine is finished on done being closed
 func OrDone[T any](done <-chan struct{}, c <-chan T) <-chan T {
-	stream := make(chan T)
+	stream := make(chan T, 1)
 
 	go func() {
 		defer close(stream)
@@ -83,8 +83,8 @@ func OrDone[T any](done <-chan struct{}, c <-chan T) <-chan T {
 
 // Creates two different streams from one origin stream
 func Tee[T any](done <-chan struct{}, in <-chan T) (_, _ <-chan T) {
-	out1 := make(chan T)
-	out2 := make(chan T)
+	out1 := make(chan T, 1)
+	out2 := make(chan T, 1)
 
 	go func() {
 		defer close(out1)
@@ -92,7 +92,7 @@ func Tee[T any](done <-chan struct{}, in <-chan T) (_, _ <-chan T) {
 
 		for val := range OrDone(done, in) {
 			// intentional shadowing
-			var out1, out2 = out1, out2
+			out1, out2 := out1, out2
 
 			for i := 0; i < 2; i++ {
 				select {
@@ -182,7 +182,12 @@ func Map[A, B any](done <-chan struct{}, in <-chan A, mapper func(A) (B, error))
 }
 
 // Maps from channel of type A to a channel of type B concurrently
-func ConcurrentMap[A, B any](done <-chan struct{}, coroutines uint, in <-chan A, mapper func(A) (B, error)) <-chan Result[B] {
+func ConcurrentMap[A, B any](
+	done <-chan struct{},
+	coroutines uint,
+	in <-chan A,
+	mapper func(A) (B, error),
+) <-chan Result[B] {
 	if coroutines == 0 {
 		coroutines = 1
 	}
@@ -268,7 +273,11 @@ func NopConsumer[T any](done <-chan struct{}, in <-chan T) {
 	}()
 }
 
-func Gather[A, B any](done <-chan struct{}, in <-chan A, mapper func(A) (B, error)) (res []Result[B]) {
+func Gather[A, B any](
+	done <-chan struct{},
+	in <-chan A,
+	mapper func(A) (B, error),
+) (res []Result[B]) {
 	for {
 		select {
 		case <-done:
@@ -289,7 +298,7 @@ func Gather[A, B any](done <-chan struct{}, in <-chan A, mapper func(A) (B, erro
 }
 
 func Observe[T any](done <-chan struct{}, in <-chan T, observer func(T)) <-chan T {
-	out := make(chan T)
+	out := make(chan T, 1)
 
 	go func() {
 		defer close(out)
@@ -310,7 +319,6 @@ func Observe[T any](done <-chan struct{}, in <-chan T, observer func(T)) <-chan 
 				}
 			}
 		}
-
 	}()
 
 	return out
@@ -337,4 +345,30 @@ func OnClose[T any](done <-chan struct{}, in <-chan T, callback func()) <-chan T
 	}(proxy)
 
 	return in
+}
+
+func StopOnClose[T any](done <-chan struct{}, in <-chan T) <-chan T {
+	out := make(chan T, 1)
+
+	go func() {
+		defer close(out)
+		for {
+			select {
+			case <-done:
+				return
+			case v, ok := <-in:
+				if !ok {
+					return
+				}
+
+				select {
+				case <-done:
+					return
+				case out <- v:
+				}
+			}
+		}
+	}()
+
+	return out
 }

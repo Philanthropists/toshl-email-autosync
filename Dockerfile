@@ -1,4 +1,4 @@
-FROM golang:1.19.4 as builder
+FROM golang:1.21.1 as builder
 
 WORKDIR /usr/src/app
 
@@ -26,7 +26,7 @@ RUN go test -v ./... && \
 
 # ---
 
-FROM alpine:3.17.0
+FROM alpine:3.18.3
 
 ARG COMMIT=dev
 
@@ -35,7 +35,7 @@ WORKDIR /
 COPY --from=tests /empty .
 
 # Needed for getting timezone locale info (i.e. America/Bogota)
-RUN apk add --no-cache tzdata=2022f-r1
+RUN apk add --no-cache tzdata=2023c-r0
 
 COPY docker_entry.sh credentials.json ./
 ADD https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie .
@@ -44,5 +44,7 @@ RUN chmod 755 aws-lambda-rie docker_entry.sh credentials.json
 
 COPY --from=builder /usr/local/bin/main ./main
 RUN echo "${COMMIT}" > ./version
+
+ENV GO_ENVIRONMENT=production
 
 ENTRYPOINT ["/docker_entry.sh"]

@@ -7,14 +7,17 @@ import (
 
 	stypes "github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/types"
-	"go.uber.org/zap"
 )
 
 type notifClient interface {
 	SendMessage(msg string) error
 }
 
-func (s *Sync) SendNotifications(ctx context.Context, client notifClient, nots <-chan types.Notification) <-chan error {
+func (s *Sync) SendNotifications(
+	ctx context.Context,
+	client notifClient,
+	nots <-chan types.Notification,
+) <-chan error {
 	errCh := make(chan error, 1)
 
 	go func() {
@@ -41,9 +44,9 @@ func (s *Sync) SendNotifications(ctx context.Context, client notifClient, nots <
 		}
 
 		if len(msgs) == 0 {
-			s.log().Info("no messages to send, not sending any notification",
-				zap.Int("msgs", len(msgs)),
-			)
+			// s.log().Info("no messages to send, not sending any notification",
+			// 	zap.Int("msgs", len(msgs)),
+			// )
 			return
 		}
 
@@ -56,16 +59,16 @@ func (s *Sync) SendNotifications(ctx context.Context, client notifClient, nots <
 
 		msg := strings.Join(append([]string{header}, msgs...), "\n")
 
-		s.log().Info("sending notifications",
-			zap.Int64("success", succ),
-			zap.Int64("failed", fail),
-			zap.Int64("parse", parse),
-		)
+		// s.log().Info("sending notifications",
+		// 	zap.Int64("success", succ),
+		// 	zap.Int64("failed", fail),
+		// 	zap.Int64("parse", parse),
+		// )
 
 		if s.DryRun {
-			s.log().Info("not sending notifications",
-				zap.Bool("dryrun", s.DryRun),
-			)
+			// s.log().Info("not sending notifications",
+			// 	zap.Bool("dryrun", s.DryRun),
+			// )
 			return
 		}
 

@@ -2,6 +2,8 @@ package types
 
 import (
 	"time"
+
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/types/currency"
 )
 
 type TransactionType int8
@@ -35,7 +37,7 @@ type TransactionInfo struct {
 	MsgId   uint32
 	Action  string
 	Place   string
-	Value   Amount
+	Value   currency.Amount
 	Account string
 	Date    time.Time
 }

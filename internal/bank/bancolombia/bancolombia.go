@@ -1,16 +1,21 @@
 package bancolombia
 
 import (
-	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
 
+	"github.com/zeebo/errs"
+
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/bank/banktypes"
 	entity "github.com/Philanthropists/toshl-email-autosync/v2/internal/types"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/types/currency"
 	regexp_util "github.com/Philanthropists/toshl-email-autosync/v2/internal/util/regexp"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/util/validation"
 )
+
+var bancolombiaErr = errs.Class("bancolombia")
 
 type Bancolombia struct{}
 
@@ -31,22 +36,12 @@ func (b Bancolombia) ComesFrom(from []string) bool {
 	return false
 }
 
-func (b Bancolombia) FilterMessage(msg entity.Message) bool {
-	keep := true
-	keep = keep && msg.Message != nil
-	keep = keep && msg.Message.Envelope != nil
+func (b Bancolombia) FilterMessage(msg banktypes.Message) bool {
+	from := msg.From()
+	keep := b.ComesFrom(from)
 
 	if keep {
-		var from []string
-		for _, address := range msg.Message.Envelope.From {
-			f := address.Address()
-			from = append(from, f)
-		}
-		keep = b.ComesFrom(from)
-	}
-
-	if keep {
-		text := string(msg.RawBody)
+		text := string(msg.Body())
 		_, keep = regexp_util.MatchesAnyRegexp(regexMatching, text)
 	}
 
@@ -55,98 +50,131 @@ func (b Bancolombia) FilterMessage(msg entity.Message) bool {
 
 var regexMatching = []*regexp_util.Match[entity.TransactionType]{
 	{
-		Regexp: regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) a (?P<place>.+) desde (?:cta|T\.CRED) \*(?P<account>\d{4})\.`),
-		Value:  entity.Expense,
+		Regexp: regexp.MustCompile(
+			`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) a (?P<place>.+) desde (?:cta|T\.CRED) \*(?P<account>\d{4})\.`,
+		),
+		Value: entity.Expense,
 	},
 	{
-		Regexp: regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) en (?P<place>[^\.]+)\..+T\.Cred \*(?P<account>\d{4})\.`),
-		Value:  entity.Expense,
+		Regexp: regexp.MustCompile(
+			`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) en (?P<place>[^\.]+)\..+T\.Cred \*(?P<account>\d{4})\.`,
+		),
+		Value: entity.Expense,
 	},
 	{
-		Regexp: regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) en (?P<place>.+)\..+T\.(?:Cred|Deb) \*(?P<account>\d{4})\.`),
-		Value:  entity.Expense,
+		Regexp: regexp.MustCompile(
+			`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) en (?P<place>.+)\..+T\.(?:Cred|Deb) \*(?P<account>\d{4})\.`,
+		),
+		Value: entity.Expense,
 	},
 	{
-		Regexp: regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) desde cta \*(?P<account>\d{4}).+cta (?P<place>\d{9,16})\.`),
-		Value:  entity.Expense,
+		Regexp: regexp.MustCompile(
+			`Bancolombia le informa (?P<type>\w+) por \$(?P<value>[0-9,\.]+) desde cta \*(?P<account>\d{4}).+cta (?P<place>\d{9,16})\.`,
+		),
+		Value: entity.Expense,
 	},
 	{
-		Regexp: regexp.MustCompile(`Realizaste una (?P<type>\w+) con QR por \$(?P<value>[0-9,\.]+), desde cta \*(?P<account>\d{4}) a cta (?P<place>\d{9,16})\.`),
-		Value:  entity.Expense,
+		Regexp: regexp.MustCompile(
+			`Realizaste una (?P<type>\w+) con QR por \$(?P<value>[0-9,\.]+), desde cta \*(?P<account>\d{4}) a cta (?P<place>\d{9,16})\.`,
+		),
+		Value: entity.Expense,
 	},
 	{
-		Regexp: regexp.MustCompile(`Bancolombia le informa (?P<type>\w+) de pago de (?P<place>[A-Z\s]+) por \$(?P<value>[0-9,\.]+) en su cuenta (?P<account>[A-Z\s]+)\s.+\.`),
-		Value:  entity.Income,
+		Regexp: regexp.MustCompile(
+			`Bancolombia le informa (?P<type>\w+) de pago de (?P<place>[A-Z\s]+) por \$(?P<value>[0-9,\.]+) en su cuenta (?P<account>[A-Z\s]+)\s.+\.`,
+		),
+		Value: entity.Income,
 	},
 	{
-		Regexp: regexp.MustCompile(`Bancolombia te informa (?P<type>\w+) transferencia de (?P<place>[A-Z\s]+) por \$(?P<value>[0-9,\.]+) en la cuenta \*(?P<account>[0-9]+)\.`),
-		Value:  entity.Income,
+		Regexp: regexp.MustCompile(
+			`Bancolombia te informa (?P<type>\w+) transferencia de (?P<place>[A-Z\s]+) por \$(?P<value>[0-9,\.]+) en la cuenta \*(?P<account>[0-9]+)\.`,
+		),
+		Value: entity.Income,
 	},
 	{
-		Regexp: regexp.MustCompile(`Bancolombia le informa un (?P<type>\w+) (?P<place>[\w\s]+) por \$(?P<value>[0-9,\.]+) en su Cuenta (?P<account>\w+)\.`),
-		Value:  entity.Income,
+		Regexp: regexp.MustCompile(
+			`Bancolombia le informa un (?P<type>\w+) (?P<place>[\w\s]+) por \$(?P<value>[0-9,\.]+) en su Cuenta (?P<account>\w+)\.`,
+		),
+		Value: entity.Income,
 	},
 	{
-		Regexp: regexp.MustCompile(`Bancolombia le informa un (?P<type>[\w\s]+) de (?P<place>[\w\s\.]+) por \$(?P<value>[0-9,\.]+) en su Cuenta (?P<account>\w+)\.`),
-		Value:  entity.Income,
+		Regexp: regexp.MustCompile(
+			`Bancolombia le informa un (?P<type>[\w\s]+) de (?P<place>[\w\s\.]+) por \$(?P<value>[0-9,\.]+) en su Cuenta (?P<account>\w+)\.`,
+		),
+		Value: entity.Income,
 	},
 	{
-		Regexp: regexp.MustCompile(`Bancolombia te informa (?P<type>[\w\s]+) por \$(?P<value>[0-9,\.]+) a (?P<place>[\w\s\.]+) desde producto \*(?P<account>\w+)\.`),
-		Value:  entity.Expense,
+		Regexp: regexp.MustCompile(
+			`Bancolombia te informa (?P<type>[\w\s]+) por \$(?P<value>[0-9,\.]+) a (?P<place>[\w\s\.]+) desde producto \*(?P<account>\w+)\.`,
+		),
+		Value: entity.Expense,
 	},
 }
 
-func (b Bancolombia) ExtractTransactionInfoFromMessage(msg entity.Message) (*entity.TransactionInfo, error) {
-	text := string(msg.RawBody)
+func (b Bancolombia) ExtractTransactionInfoFromMessage(
+	msg banktypes.Message,
+) (_ *banktypes.TrxInfo, err error) {
+	defer func() {
+		if err != nil {
+			err = entity.ErrParseFailure{
+				Cause: err,
+				Value: msg,
+			}
+		}
+
+		err = bancolombiaErr.Wrap(err)
+	}()
+
+	text := string(msg.Body())
 
 	selectedRegexp, ok := regexp_util.MatchesAnyRegexp(regexMatching, text)
 	if !ok {
-		return nil, entity.ErrParseFailure{
-			Cause:   errors.New("message did not match any regexp from Bancolombia"),
-			Message: msg,
-		}
+		return nil, errs.New("message did not match any regexp")
 	}
 
 	// sanity check
 	if !selectedRegexp.Value.IsValid() {
-		return nil, entity.ErrParseFailure{
-			Cause:   errors.New("transaction type is not valid"),
-			Message: msg,
-		}
+		return nil, errs.New("transaction type is not valid")
 	}
 
 	result := regexp_util.ExtractFieldsWithMatch(text, selectedRegexp)
 
 	if !validation.ContainsAllRequiredFields(result) {
-		return nil, entity.ErrParseFailure{
-			Cause:   fmt.Errorf("message does not contain all required fields - result [%+v]", result),
-			Message: msg,
-		}
+		return nil, errs.New(
+			"message does not contain all required fields: [result:%+v]",
+			result,
+		)
 	}
 
 	value, err := getValueFromText(result["value"])
 	if err != nil {
-		return nil, entity.ErrParseFailure{
-			Cause:   err,
-			Message: msg,
-		}
+		return nil, errs.Wrap(err)
 	}
 
-	return &entity.TransactionInfo{
-		Bank:    b,
-		MsgId:   msg.SeqNum,
-		Type:    selectedRegexp.Value,
-		Action:  result["type"],
-		Place:   result["place"],
-		Value:   value,
-		Account: result["account"],
-		Date:    msg.Envelope.Date,
+	action := result["type"]
+	place := result["place"]
+	account := result["account"]
+	trxType := selectedRegexp.Value
+
+	return &banktypes.TrxInfo{
+		Date:          msg.Date(),
+		Bank:          b,
+		Action:        action,
+		Description:   place,
+		Account:       account,
+		Value:         value,
+		CorrelationID: banktypes.MessageID(msg.ID()),
+		Type:          banktypes.TrxType(trxType),
 	}, nil
 }
 
 // This would be way easier if Bancolombia had a consistent use of commas and dots inside the currency
-var currencyRegexp = regexp.MustCompile(`^(?P<integer>[0-9\.,]+)[\.,](?P<decimal>\d{2})$`)
-var currencyRegexpWithoutDecimal = regexp.MustCompile(`^(?P<integer>[0-9\.,]+)`)
+var (
+	currencyRegexp = regexp.MustCompile(
+		`^(?P<integer>[0-9\.,]+)[\.,](?P<decimal>\d{2})$`,
+	)
+	currencyRegexpWithoutDecimal = regexp.MustCompile(`^(?P<integer>[0-9\.,]+)`)
+)
 
 func getValueFromTextWithDecimal(s string) (string, error) {
 	if !currencyRegexp.MatchString(s) {
@@ -173,7 +201,11 @@ func getValueFromTextWithDecimal(s string) (string, error) {
 
 func getValueFromTextWithoutDecimal(s string) (string, error) {
 	if !currencyRegexpWithoutDecimal.MatchString(s) {
-		return "", fmt.Errorf("string [%s] does not match regex without decimal [%s]", s, currencyRegexp.String())
+		return "", fmt.Errorf(
+			"string [%s] does not match regex without decimal [%s]",
+			s,
+			currencyRegexp.String(),
+		)
 	}
 
 	res := regexp_util.ExtractFields(s, currencyRegexpWithoutDecimal)
@@ -190,19 +222,19 @@ func getValueFromTextWithoutDecimal(s string) (string, error) {
 	return valueStr, nil
 }
 
-func getValueFromText(s string) (entity.Amount, error) {
+func getValueFromText(s string) (currency.Amount, error) {
 	valueStr, err := getValueFromTextWithDecimal(s)
 	if err != nil {
 		valueStr, err = getValueFromTextWithoutDecimal(s)
 	}
 
 	if err != nil {
-		return entity.Amount{}, err
+		return currency.Amount{}, err
 	}
 
 	value, err := strconv.ParseFloat(valueStr, 64)
 
-	var amount entity.Amount
+	var amount currency.Amount
 	amount.Code = "COP"
 	amount.Number = value
 

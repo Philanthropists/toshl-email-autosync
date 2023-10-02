@@ -5,14 +5,20 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"sync"
 	"time"
 
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/mail/types"
-	"github.com/Philanthropists/toshl-email-autosync/v2/pkg/pipe"
 	_imap "github.com/emersion/go-imap"
 	_client "github.com/emersion/go-imap/client"
 	"github.com/emersion/go-message/mail"
+
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/mail/types"
+	"github.com/Philanthropists/toshl-email-autosync/v2/pkg/pipe"
+)
+
+const (
+	fetchTimeout = 10 * time.Second
 )
 
 type Client struct {
@@ -22,6 +28,8 @@ type Client struct {
 
 	once       sync.Once
 	imapClient *_client.Client
+
+	locker sync.Mutex
 }
 
 func (c *Client) client() (*_client.Client, error) {
@@ -50,13 +58,16 @@ func (c *Client) createClient() (*_client.Client, error) {
 }
 
 func (c *Client) Mailboxes() ([]types.Mailbox, error) {
+	c.locker.Lock()
+	defer c.locker.Unlock()
 	client, err := c.client()
 	if err != nil {
 		return nil, err
 	}
 
-	rawMailboxes := make(chan *_imap.MailboxInfo, 10)
-	done := make(chan error)
+	rawMailboxes := make(chan *_imap.MailboxInfo)
+	done := make(chan error, 1)
+	defer close(done)
 	go func() {
 		done <- client.List("", "*", rawMailboxes)
 	}()
@@ -74,7 +85,29 @@ func (c *Client) Mailboxes() ([]types.Mailbox, error) {
 	return mailboxes, nil
 }
 
-func (c *Client) Messages(ctx context.Context, box types.Mailbox, since time.Time) (<-chan pipe.Result[*types.Message], error) {
+func (c *Client) Select(box types.Mailbox) error {
+	c.locker.Lock()
+	defer c.locker.Unlock()
+	client, err := c.client()
+	if err != nil {
+		return err
+	}
+
+	_, err = client.Select(string(box), true)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *Client) Messages(
+	ctx context.Context,
+	box types.Mailbox,
+	since time.Time,
+) (<-chan pipe.Result[*types.Message], error) {
+	c.locker.Lock()
+	defer c.locker.Unlock()
 	client, err := c.client()
 	if err != nil {
 		return nil, err
@@ -97,6 +130,8 @@ func (c *Client) Messages(ctx context.Context, box types.Mailbox, since time.Tim
 
 	messages := make(chan *_imap.Message)
 
+	ctx, cancel := context.WithTimeout(ctx, fetchTimeout)
+
 	asyncErr := pipe.AsyncResult(ctx.Done(), func() (bool, error) {
 		var section _imap.BodySectionName
 		fetch := []_imap.FetchItem{section.FetchItem(), _imap.FetchEnvelope}
@@ -118,20 +153,18 @@ func (c *Client) Messages(ctx context.Context, box types.Mailbox, since time.Tim
 	}()
 
 	// Workaround since imap client is trying to send messages and it does not receive any context to cancel
-	go func() {
-		_, ok := <-newCtx.Done()
-		if !ok && newCtx.Err() != nil {
-			for range messages {
-				// consume until finished
-			}
-		}
-	}()
+	messagesPipe := pipe.StopOnClose[*_imap.Message](newCtx.Done(), messages)
 
 	const cons = 10
-	msgs := pipe.ConcurrentMap(newCtx.Done(), cons, messages, func(m *_imap.Message) (*types.Message, error) {
-		msg, err := getCompleteMessage(m)
-		return &msg, err
-	})
+	msgs := pipe.ConcurrentMap(
+		newCtx.Done(),
+		cons,
+		messagesPipe,
+		func(m *_imap.Message) (*types.Message, error) {
+			msg, err := getCompleteMessage(m)
+			return &msg, err
+		},
+	)
 
 	return msgs, nil
 }
@@ -198,7 +231,35 @@ func (c *Client) Move(dest types.Mailbox, ids ...uint32) error {
 	seqset := new(_imap.SeqSet)
 	seqset.AddNum(ids...)
 
-	return client.Move(seqset, string(dest))
+	err = client.Move(seqset, string(dest))
+	if err != nil {
+		log.Printf("could not move, moving with COPY, STORE, EXPUNGE: %v", err)
+		return c.moveFallback(seqset, string(dest))
+	}
+	return err
+}
+
+func (c *Client) moveFallback(seqset *_imap.SeqSet, dest string) error {
+	client, err := c.client()
+	if err != nil {
+		return err
+	}
+
+	if err := client.Copy(seqset, dest); err != nil {
+		return fmt.Errorf("could not copy: %w", err)
+	}
+
+	item := _imap.FormatFlagsOp(_imap.AddFlags, false)
+	flags := []interface{}{_imap.DeletedFlag}
+	if err := client.Store(seqset, item, flags, nil); err != nil {
+		return fmt.Errorf("could not store: %w", err)
+	}
+
+	if err := client.Expunge(nil); err != nil {
+		return fmt.Errorf("could not expunge: %w", err)
+	}
+
+	return nil
 }
 
 func (c *Client) Logout() error {
@@ -211,5 +272,4 @@ func (c *Client) Logout() error {
 	}
 
 	return nil
-
 }

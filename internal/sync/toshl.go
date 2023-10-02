@@ -14,7 +14,6 @@ import (
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/types"
 	util "github.com/Philanthropists/toshl-email-autosync/v2/internal/util/regexp"
 	"github.com/Philanthropists/toshl-email-autosync/v2/pkg/pipe"
-	"go.uber.org/zap"
 )
 
 type toshlClient interface {
@@ -24,8 +23,11 @@ type toshlClient interface {
 	CreateCategory(category *toshl.Category) error
 }
 
-func (s *Sync) SaveTransactions(ctx context.Context, client toshlClient, txs <-chan *types.TransactionInfo) <-chan pipe.Result[*types.TransactionInfo] {
-
+func (s *Sync) SaveTransactions(
+	ctx context.Context,
+	client toshlClient,
+	txs <-chan *types.TransactionInfo,
+) <-chan pipe.Result[*types.TransactionInfo] {
 	cache := toshlCache{
 		Client: client,
 	}
@@ -35,7 +37,7 @@ func (s *Sync) SaveTransactions(ctx context.Context, client toshlClient, txs <-c
 		return t, err
 	}
 
-	return pipe.ConcurrentMap(ctx.Done(), s.goroutines(), txs, f)
+	return pipe.ConcurrentMap(ctx.Done(), 1, txs, f)
 }
 
 type toshlCache struct {
@@ -78,7 +80,6 @@ func (cs *toshlCache) createCategoryIfAbsent(t types.TransactionType) (string, e
 	}
 
 	return cat.ID, nil
-
 }
 
 func (cs *toshlCache) GetCategory(t types.TransactionType) (string, error) {
@@ -104,14 +105,14 @@ func (cs *toshlCache) GetCategory(t types.TransactionType) (string, error) {
 }
 
 func (cs *toshlCache) buildAccountsCache() error {
-	var exp = regexp.MustCompile(`^(?P<accounts>[0-9\s]+) `)
+	exp := regexp.MustCompile(`^(?P<accounts>[0-9\s]+) `)
 
 	accounts, err := cs.Client.GetAccounts()
 	if err != nil {
 		return err
 	}
 
-	var mapping = make(map[string]string)
+	mapping := make(map[string]string)
 	for _, account := range accounts {
 		name := account.Name
 		result := util.ExtractFields(name, exp)
@@ -145,7 +146,11 @@ func (cs *toshlCache) GetMappableAccount(id string) (string, error) {
 	return id, nil
 }
 
-func (s *Sync) createEntry(client toshlClient, cache *toshlCache, tx *types.TransactionInfo) (*toshl.Entry, error) {
+func (s *Sync) createEntry(
+	client toshlClient,
+	cache *toshlCache,
+	tx *types.TransactionInfo,
+) (*toshl.Entry, error) {
 	const dateFormat = "2006-01-02"
 
 	accountID, err := cache.GetMappableAccount(tx.Account)
@@ -180,10 +185,10 @@ func (s *Sync) createEntry(client toshlClient, cache *toshlCache, tx *types.Tran
 	newEntry.Account = accountID
 	newEntry.Category = categoryID
 
-	s.log().Debug("entry to create", zap.Reflect("entry", newEntry))
+	// s.log().Debug("entry to create", zap.Reflect("entry", newEntry))
 
 	if s.DryRun {
-		s.log().Info("not creating entry", zap.Bool("dryrun", s.DryRun))
+		// s.log().Info("not creating entry", zap.Bool("dryrun", s.DryRun))
 		err = nil
 	} else {
 		err = client.CreateEntry(&newEntry)

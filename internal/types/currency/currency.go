@@ -1,10 +1,10 @@
-package types
+package currency
 
 import "fmt"
 
 type Amount struct {
-	Number float64
 	Code   string
+	Number float64
 }
 
 func (a Amount) String() string {

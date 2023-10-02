@@ -3,8 +3,8 @@ package types
 import "fmt"
 
 type ErrParseFailure struct {
-	Cause   error
-	Message Message
+	Cause error
+	Value any
 }
 
 func (e ErrParseFailure) Error() string {

@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"time"
-
-	"go.uber.org/zap"
 )
 
 const (
@@ -23,8 +21,11 @@ func (s *Sync) LastProcessedDate(ctx context.Context, client itemNosqlClient) (t
 		"Id": itemId,
 	})
 	if err != nil {
-		return time.Time{}, fmt.Errorf("could not get item with id [%d] from dynamodb table [%s]: %w",
-			itemId, table, err,
+		return time.Time{}, fmt.Errorf(
+			"could not get item with id [%d] from dynamodb table [%s]: %w",
+			itemId,
+			table,
+			err,
 		)
 	}
 
@@ -42,7 +43,11 @@ func (s *Sync) LastProcessedDate(ctx context.Context, client itemNosqlClient) (t
 
 	selectedDate, err := time.Parse(time.RFC822Z, dateStr)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("item field [%s] is not a string representing a date: %w", dateStr, err)
+		return time.Time{}, fmt.Errorf(
+			"item field [%s] is not a string representing a date: %w",
+			dateStr,
+			err,
+		)
 	}
 
 	const oneDayBefore time.Duration = -24 * time.Hour
@@ -55,12 +60,11 @@ type updateNosqlClient interface {
 	UpdateItem(ctx context.Context, s string, k, m map[string]interface{}, e string) error
 }
 
-func (s *Sync) UpdateLastProcessedDate(ctx context.Context, client updateNosqlClient, date time.Time) error {
-	if s.DryRun {
-		s.log().Info("not updating processing date", zap.Bool("dryrun", s.DryRun))
-		return nil
-	}
-
+func (s *Sync) UpdateLastProcessedDate(
+	ctx context.Context,
+	client updateNosqlClient,
+	date time.Time,
+) error {
 	exp := fmt.Sprintf("set %s = :r", field)
 	value := date.Format(time.RFC822Z)
 

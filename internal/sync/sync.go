@@ -2,368 +2,88 @@ package sync
 
 import (
 	"context"
-	"fmt"
-	"log"
-	"os"
-	"runtime"
+	"sync"
 	"time"
 
-	zap "go.uber.org/zap"
+	"github.com/zeebo/errs"
 
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/mail"
-	mTypes "github.com/Philanthropists/toshl-email-autosync/v2/internal/mail/types"
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/notification/twilio"
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/store/nosql/dynamodb"
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/store/saas/toshl"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/bank/banktypes"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/logging"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
-	gTypes "github.com/Philanthropists/toshl-email-autosync/v2/internal/types"
-	"github.com/Philanthropists/toshl-email-autosync/v2/pkg/pipe"
-	"github.com/pkg/errors"
 )
 
-var (
-	sinceFallbackDate time.Time = time.Now().Add(-30 * 24 * 60 * 60 * time.Second) // 30 days
+var syncErr = errs.Class("sync")
+
+type (
+	VersionCtxKey struct{}
 )
 
-const (
-	OverrideLasProcessedDateEnvName = "OVERRIDE_LAST_PROC_DATE"
-)
+type banksRepository interface {
+	GetBanks(context.Context) []banktypes.BankDelegate
+}
+
+type dateRepository interface {
+	GetLastProcessedDate(context.Context) (time.Time, error)
+	SaveProcessedDate(context.Context, time.Time) error
+}
+
+type Dependencies struct {
+	TimeLocale *time.Location
+	BanksRepo  banksRepository
+	DateRepo   dateRepository
+}
 
 type Sync struct {
 	Config types.Config
 	DryRun bool
 
-	Log        *zap.Logger
-	Goroutines uint
+	configOnce sync.Once
+	deps       *Dependencies
 }
 
-func (s *Sync) log() *zap.Logger {
-	if s.Log == nil {
-		logger, err := zap.NewProduction()
-		if err != nil {
-			log.Panicf("could not create logger: %v", err)
-		}
-		s.Log = logger
+func (s *Sync) Run(ctx context.Context) (genErr error) {
+	log := logging.New()
+	defer func() { _ = log.Sync() }()
+	defer func() { genErr = syncErr.Wrap(genErr) }()
+
+	if err := s.configure(ctx); err != nil {
+		return err
 	}
 
-	return s.Log
-}
+	log.Info("timelocale set", logging.String("timezone", s.Config.Timezone))
 
-func (s *Sync) goroutines() uint {
-	if s.Goroutines == 0 {
-		cpus := runtime.NumCPU()
-		return uint(cpus)
-	}
+	// Guidelines:
+	// - For every client, receive a context
+	// - Try to include as many fallback ops as possible
+	// - Make a general repository for data that abstracts every action taken
+	// - Always use minimal abstractions for dependencies, and use interfaces always
+	// Always log into the general logger
+	// Always include a DryRun context value
+	// Always use errs library for errors
 
-	return s.Goroutines
-}
+	// TODO: get available banks
+	banks := s.deps.BanksRepo.GetBanks(ctx)
+	_ = banks
 
-type stackTracer interface {
-	StackTrace() errors.StackTrace
-}
-
-func (s *Sync) getDynamoClient(ctx context.Context) (dynamodb.Client, error) {
-	const region = "us-east-1"
-	dynamoClient, err := dynamodb.NewDynamoDBClient(ctx, region)
-	return dynamoClient, err
-}
-
-func (s *Sync) getLastProcessedDateOverride() (time.Time, bool) {
-	if dateStr := os.Getenv(OverrideLasProcessedDateEnvName); dateStr != "" {
-		const dateFormat = "2006-01-02"
-
-		selectedDate, err := time.Parse(dateFormat, dateStr)
-		logCtx := s.log().With(zap.Time("date_override", selectedDate))
-		if err == nil {
-			logCtx.Info("date is overriden")
-			return selectedDate, true
-		} else {
-			logCtx.Error("override is set, but it is invalid")
-		}
-	}
-
-	return time.Time{}, false
-}
-
-func (s *Sync) GetLastProcessedDate(ctx context.Context) time.Time {
-	logCtx := s.log().With(zap.Time("fallbackDate", sinceFallbackDate))
-
-	if overrideDate, ok := s.getLastProcessedDateOverride(); ok {
-		return overrideDate
-	}
-
-	client, err := s.getDynamoClient(ctx)
-	if err != nil {
-		logCtx.Error("could not create dynamodb client",
-			zap.Error(err),
-		)
-		return sinceFallbackDate
-	}
-
-	since, err := s.LastProcessedDate(ctx, client)
-	if err != nil {
-		logCtx.Error("could not get date from dynamodb", zap.Error(err))
-		return sinceFallbackDate
-	}
-
-	return since
-}
-
-type notifClientWrapper struct {
-	Client twilio.Client
-	From   string
-	To     string
-}
-
-func (n notifClientWrapper) SendMessage(msg string) error {
-	_, err := n.Client.SendMessage(n.From, n.To, msg)
-	return err
-}
-
-func (s *Sync) Run(ctx context.Context) (e error) {
-	defer func() {
-		if err := recover(); err != nil {
-			asError, ok := err.(error)
-			if ok {
-				e = fmt.Errorf("got panic: %w", asError)
-				errStack, ok := errors.Cause(asError).(stackTracer)
-				if ok {
-					fmt.Printf("Stacktrace: %v\n", errStack.StackTrace())
-				} else {
-					s.log().Debug("error does not implement stacktracer")
-				}
-
-			} else {
-				e = fmt.Errorf("got panic: %v", err)
-			}
-		}
-	}()
-
-	s.log().Info("running sync",
-		zap.Bool("dryrun", s.DryRun),
-		zap.Reflect("version", ctx.Value(types.Version)),
-	)
-
-	mailCl := mail.Client{
-		Addr:     s.Config.Address,
-		Username: s.Config.Username,
-		Password: s.Config.Password,
-	}
-	defer func() {
-		err := mailCl.Logout()
-		if err != nil {
-			s.log().Warn("could not log out from mail client", zap.Error(err))
-		}
-	}()
-
-	banks := s.AvailableBanks()
-	since := s.GetLastProcessedDate(ctx)
-	var notifChans []<-chan gTypes.Notification
-
-	msgs, err := s.GetMessagesFromInbox(ctx, &mailCl, banks, since)
+	// TODO: get last successful transaction timestamp
+	lastProcessedDate, err := s.deps.DateRepo.GetLastProcessedDate(ctx)
 	if err != nil {
 		return err
 	}
 
-	matchedMsgs, notifChMsgs := s.notifyMailErrors(ctx, msgs)
-	notifChans = append(notifChans, notifChMsgs)
+	log.Info("last processed date", logging.Time("last_processed_date", lastProcessedDate))
 
-	txs := s.ExtractTransactionInfoFromMessages(ctx, matchedMsgs)
+	// TODO: get all mail entries from mailbox, also beware of context cancelation
 
-	cleanTxs, notifChParse := s.notifyParseErrors(ctx, txs)
-	notifChans = append(notifChans, notifChParse)
+	// TODO: when processing each mail, get each user config for handling notifications (use a cache aswell)
 
-	toshlCl, err := toshl.NewToshlClient(s.Config.Toshl.Token)
-	if err != nil {
-		return err
-	}
+	// TODO: if there are parse errors, each should be archived into the "error parsing" mailbox
 
-	savedTxs, notifChTxs := s.notifyTxErrors(ctx, toshlCl, cleanTxs)
-	notifChans = append(notifChans, notifChTxs)
+	// TODO: successful parses, are now being registered into the accounting software
 
-	savedTxs, teeSavedTxs := pipe.Tee(ctx.Done(), savedTxs)
-	teeSavedTxs, teeSavedTxs2 := pipe.Tee(ctx.Done(), teeSavedTxs)
+	// TODO: each sucessfull to register into accounting is to be archived into the 'processed' mailbox
 
-	successfulTxs := pipe.IgnoreOnError(ctx.Done(), savedTxs)
-	failedTxs := pipe.OnlyOnError(ctx.Done(), teeSavedTxs)
-
-	asyncDate := pipe.AsyncResult(ctx.Done(),
-		func() (time.Time, error) {
-			const oneDayBefore time.Duration = -24 * time.Hour
-
-			earliestDate := time.Now().Add(oneDayBefore)
-			for v := range failedTxs {
-				t := v.Value
-				date := t.Date
-				if date.Before(earliestDate) {
-					earliestDate = date
-				}
-			}
-
-			return earliestDate, nil
-		},
-	)
-
-	go func() {
-		for t := range teeSavedTxs2 {
-			tx := t.Value
-			logCtx := s.log().With(
-				zap.Reflect("date", tx.Date),
-				zap.String("account", tx.Account),
-				zap.String("place", tx.Place),
-				zap.Reflect("value", tx.Value),
-				zap.String("bank", tx.Bank.String()),
-			)
-
-			if t.Error == nil {
-				logCtx.Info("created entry for transaction")
-			} else {
-				logCtx.Error("failed to create entry for transaction",
-					zap.Error(t.Error),
-				)
-			}
-		}
-	}()
-
-	notifClient := notifClientWrapper{
-		Client: twilio.Client{
-			AccountSid: s.Config.Twilio.AccountSid,
-			Token:      s.Config.Twilio.AuthToken,
-		},
-		From: s.Config.Twilio.FromNumber,
-		To:   s.Config.Twilio.ToNumber,
-	}
-
-	notifications := pipe.FanIn(ctx.Done(), notifChans...)
-	asyncErr := s.SendNotifications(ctx, notifClient, notifications)
-	defer func(asyncErr <-chan error) {
-		err, ok := <-asyncErr
-		if ok {
-			s.log().Error("failed to send notifications", zap.Error(err))
-			e = err
-		}
-	}(asyncErr)
-
-	archiveErr, ok := <-s.ArchiveTransactions(ctx, &mailCl, successfulTxs)
-	if ok && archiveErr != nil {
-		s.log().Error("failed to archive transaction emails",
-			zap.Error(archiveErr),
-		)
-	}
-
-	if client, err := s.getDynamoClient(ctx); err == nil {
-		newDate := (<-asyncDate).Value
-		s.log().Info("updating last processed date",
-			zap.Time("date", newDate),
-		)
-
-		err = s.UpdateLastProcessedDate(ctx, client, newDate)
-		if err != nil {
-			s.log().Error("could not update last processed date in dynamo",
-				zap.Error(err),
-			)
-		}
-	} else {
-		s.log().Error("could not create dynamo client",
-			zap.Error(err),
-		)
-	}
+	// TODO: notify each user with the processing report
 
 	return nil
-}
-
-func (s Sync) notifyMailErrors(
-	ctx context.Context,
-	msgs <-chan pipe.Result[*gTypes.BankMessage],
-) (<-chan *gTypes.BankMessage, <-chan gTypes.Notification) {
-	notifChMsgs := make(chan gTypes.Notification)
-	cleanMsgs := pipe.OnError(ctx.Done(), msgs,
-		func(msg *gTypes.BankMessage, err error) {
-			var errMsg mTypes.ErrInternal
-			if errors.As(err, &errMsg) && msg != nil {
-				notifChMsgs <- gTypes.Notification{
-					Type: gTypes.Failed,
-					Date: msg.Envelope.Date,
-					Msg:  errors.Cause(err).Error(),
-				}
-			}
-		},
-	)
-	cleanMsgs = pipe.OnClose(ctx.Done(), cleanMsgs, func() {
-		close(notifChMsgs)
-	})
-
-	return cleanMsgs, notifChMsgs
-}
-
-func (s Sync) notifyParseErrors(
-	ctx context.Context,
-	txs <-chan pipe.Result[*gTypes.TransactionInfo],
-) (<-chan *gTypes.TransactionInfo, <-chan gTypes.Notification) {
-
-	notifChParse := make(chan gTypes.Notification)
-	cleanTxs := pipe.OnError(ctx.Done(), txs,
-		func(tx *gTypes.TransactionInfo, err error) {
-			var errParse gTypes.ErrParseFailure
-			if errors.As(err, &errParse) {
-				notifChParse <- gTypes.Notification{
-					Type: gTypes.Parse,
-					Date: errParse.Message.Envelope.Date,
-					Msg:  errParse.Cause.Error(),
-				}
-			} else {
-				s.log().Error(
-					"error processing message, not an ErrParseFailure type",
-					zap.Error(err),
-				)
-			}
-		},
-	)
-	cleanTxs = pipe.OnClose(ctx.Done(), cleanTxs, func() {
-		close(notifChParse)
-	})
-
-	return cleanTxs, notifChParse
-}
-
-func (s Sync) notifyTxErrors(
-	ctx context.Context,
-	toshlCl toshl.Client,
-	cleanTxs <-chan *gTypes.TransactionInfo,
-) (<-chan pipe.Result[*gTypes.TransactionInfo], <-chan gTypes.Notification) {
-
-	notifChTxs := make(chan gTypes.Notification)
-	savedTxs := s.SaveTransactions(ctx, toshlCl, cleanTxs)
-	savedTxs = pipe.Observe(ctx.Done(), savedTxs,
-		func(r pipe.Result[*gTypes.TransactionInfo]) {
-			val := r.Value
-			if err := r.Error; err != nil {
-				var date time.Time = time.Now()
-				if r.Value != nil {
-					date = val.Date
-				}
-
-				notifChTxs <- gTypes.Notification{
-					Type: gTypes.Failed,
-					Date: date,
-					Msg:  err.Error(),
-				}
-			} else {
-				notifChTxs <- gTypes.Notification{
-					Type: gTypes.Success,
-					Date: val.Date,
-					Msg: fmt.Sprintf(
-						"$ %.2f %s",
-						val.Value.Number,
-						val.Place,
-					),
-				}
-			}
-		},
-	)
-	savedTxs = pipe.OnClose(ctx.Done(), savedTxs, func() {
-		close(notifChTxs)
-	})
-
-	return savedTxs, notifChTxs
 }

@@ -11,6 +11,10 @@ func Time[S ~string](s S, t time.Time) Field {
 	return zap.Time(string(s), t)
 }
 
+func Duration[S ~string](s S, t time.Duration) Field {
+	return zap.Duration(string(s), t)
+}
+
 func Any[S ~string](s S, v any) Field {
 	return zap.Any(string(s), v)
 }

@@ -6,10 +6,12 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/emersion/go-imap/client"
 	"github.com/zeebo/errs"
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/bank"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/dateprocessingrepo"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/mailrepo"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
 )
 
@@ -40,11 +42,23 @@ func getDependencies(ctx context.Context, config types.Config) (*Dependencies, e
 		return nil, err
 	}
 
+	imapClient, err := getEmailClient(
+		config.Mail.Address,
+		config.Mail.Username,
+		config.Mail.Password,
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Dependencies{
 		TimeLocale: loc,
 		BanksRepo:  bank.Repository{},
-		DateRepo: dateprocessingrepo.DateProcessingRepositoryDynamoDB{
+		DateRepo: dateprocessingrepo.DynamoDBRepository{
 			DynamoDBClient: dynamoClient,
+		},
+		MailRepo: &mailrepo.IMAPRepository{
+			IMAPClient: imapClient,
 		},
 	}, nil
 }
@@ -66,4 +80,17 @@ func getDynamoDBClient(ctx context.Context, region string) (*dynamodb.Client, er
 
 	dynamoClient := dynamodb.NewFromConfig(cfg)
 	return dynamoClient, nil
+}
+
+func getEmailClient(addr, username, password string) (*client.Client, error) {
+	emailClient, err := client.DialTLS(addr, nil)
+	if err != nil {
+		return nil, errs.Wrap(err)
+	}
+
+	if err := emailClient.Login(username, password); err != nil {
+		return nil, errs.Wrap(err)
+	}
+
+	return emailClient, nil
 }

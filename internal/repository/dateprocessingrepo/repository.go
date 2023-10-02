@@ -47,11 +47,11 @@ type dynamoClient interface {
 	) (*dynamodb.UpdateItemOutput, error)
 }
 
-type DateProcessingRepositoryDynamoDB struct {
+type DynamoDBRepository struct {
 	DynamoDBClient dynamoClient
 }
 
-func (r DateProcessingRepositoryDynamoDB) GetLastProcessedDate(
+func (r DynamoDBRepository) GetLastProcessedDate(
 	ctx context.Context,
 ) (time.Time, error) {
 	log := logging.New()
@@ -79,7 +79,7 @@ func (r DateProcessingRepositoryDynamoDB) GetLastProcessedDate(
 	return since, nil
 }
 
-func (r DateProcessingRepositoryDynamoDB) getLastProcessedDateOverride() (time.Time, bool) {
+func (r DynamoDBRepository) getLastProcessedDateOverride() (time.Time, bool) {
 	log := logging.New()
 	defer func() { _ = log.Sync() }()
 
@@ -100,7 +100,7 @@ func (r DateProcessingRepositoryDynamoDB) getLastProcessedDateOverride() (time.T
 	return time.Time{}, false
 }
 
-func (r DateProcessingRepositoryDynamoDB) SaveProcessedDate(
+func (r DynamoDBRepository) SaveProcessedDate(
 	ctx context.Context,
 	t time.Time,
 ) error {
@@ -169,7 +169,7 @@ type DateObj struct {
 	ProcessedDate ProcessedDate `dynamodbav:"LastProcessedDate"`
 }
 
-func (r DateProcessingRepositoryDynamoDB) getDateFromStorage(
+func (r DynamoDBRepository) getDateFromStorage(
 	ctx context.Context,
 ) (time.Time, error) {
 	key, err := attributevalue.MarshalMap(map[string]any{

@@ -8,6 +8,7 @@ type Config struct {
 type Credentials struct {
 	Mail   Mail   `json:"mail"`
 	Twilio Twilio `json:"twilio"`
+	Toshl  Toshl  `json:"toshl"`
 }
 
 type Mail struct {
@@ -17,7 +18,11 @@ type Mail struct {
 }
 
 type Twilio struct {
-	AccountSid string `json:"twilio-account-sid"`
-	AuthToken  string `json:"twilio-auth-token"`
-	FromNumber string `json:"twilio-from-number"`
+	AccountSid string `json:"account-sid"`
+	AuthToken  string `json:"auth-token"`
+	FromNumber string `json:"from-number"`
+}
+
+type Toshl struct {
+	Token string `json:"token"`
 }

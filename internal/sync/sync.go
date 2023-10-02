@@ -2,13 +2,18 @@ package sync
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
+	"slices"
+
 	"github.com/zeebo/errs"
+	"go.uber.org/zap"
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/bank/banktypes"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/logging"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/mailrepo"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
 )
 
@@ -27,10 +32,19 @@ type dateRepository interface {
 	SaveProcessedDate(context.Context, time.Time) error
 }
 
+type mailRepository interface {
+	GetAvailableMailboxes(context.Context) ([]string, error)
+	GetMessagesFromMailbox(
+		context.Context, string, time.Time,
+	) (<-chan mailrepo.MessageErr, error)
+	MoveMessagesToMailbox(context.Context, string, ...uint64) error
+}
+
 type Dependencies struct {
 	TimeLocale *time.Location
 	BanksRepo  banksRepository
 	DateRepo   dateRepository
+	MailRepo   mailRepository
 }
 
 type Sync struct {
@@ -73,7 +87,51 @@ func (s *Sync) Run(ctx context.Context) (genErr error) {
 
 	log.Info("last processed date", logging.Time("last_processed_date", lastProcessedDate))
 
+	// TODO: get mailboxes
+	mailboxes, err := s.deps.MailRepo.GetAvailableMailboxes(ctx)
+	if err != nil {
+		return err
+	}
+	log.Info("mailboxes", zap.Strings("mailboxes", mailboxes))
+
+	if !slices.Contains(mailboxes, "INBOX") {
+		return errs.New("there is no INBOX mailbox")
+	}
+
+	mailCtx := ctx
+	if deadline, ok := ctx.Deadline(); ok {
+		// a small portion of the time should be to get the messages,
+		// if we are unable to get more messages it does not matter,
+		// we should go with what we have
+		remainingTime := -1 * time.Since(deadline)
+		const timeFactor = 0.4
+		timeSlot := time.Duration(timeFactor * float64(remainingTime))
+
+		log.Info("we have a deadline, setting a time slot for messages",
+			logging.Time("deadline", deadline),
+			logging.Duration("timeslot", timeSlot),
+			logging.Float("time_factor", timeFactor),
+		)
+
+		var cancel context.CancelFunc
+		mailCtx, cancel = context.WithTimeout(ctx, timeSlot)
+		defer cancel()
+	}
+
 	// TODO: get all mail entries from mailbox, also beware of context cancelation
+	messages, err := s.deps.MailRepo.GetMessagesFromMailbox(mailCtx, "INBOX", lastProcessedDate)
+	if err != nil {
+		return err
+	}
+
+	log.Info("got messages", logging.Int("len", len(messages)))
+
+	i := 0
+	for me := range messages {
+		m := me.Msg
+		fmt.Printf("%d: %v -- %s (%d bytes)\n", i, m.Subject(), m.Date(), len(m.Body()))
+		i++
+	}
 
 	// TODO: when processing each mail, get each user config for handling notifications (use a cache aswell)
 

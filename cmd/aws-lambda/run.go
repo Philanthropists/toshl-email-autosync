@@ -3,12 +3,16 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"time"
 
 	"github.com/aws/aws-lambda-go/lambda"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/logging"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
 )
@@ -54,19 +58,34 @@ func getConfig() (types.Config, error) {
 	return config, nil
 }
 
+func configureLogger() error {
+	config := zap.NewDevelopmentConfig()
+	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+
+	logger, err := config.Build()
+	if err != nil {
+		return err
+	}
+
+	version := "dev"
+	if v, err := getVersion(); err == nil {
+		version = v
+	}
+
+	logger = logger.With(zap.String("version", version))
+	logging.SetCustomGlobalLogger(logger)
+
+	return nil
+}
+
 func HandleRequest(ctx context.Context) error {
 	config, err := getConfig()
 	if err != nil {
 		return err
 	}
 
-	version, err := getVersion()
-	if err != nil {
-		return err
-	}
-
-	if version != "" && len(version) >= 3 {
-		ctx = context.WithValue(ctx, types.VersionCtxKey{}, version[:3])
+	if err := configureLogger(); err != nil {
+		return fmt.Errorf("could not configure logger: %w", err)
 	}
 
 	sync := sync.Sync{

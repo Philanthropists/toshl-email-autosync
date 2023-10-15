@@ -3,8 +3,9 @@ package toshl
 import (
 	"errors"
 
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/store/saas/toshl/types"
 	_toshl "github.com/Philanthropists/toshl-go"
+
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/external/toshl/types"
 )
 
 type toshlClient interface {

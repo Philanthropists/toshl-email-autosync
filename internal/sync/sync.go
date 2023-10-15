@@ -45,6 +45,7 @@ type userConfigRepository interface {
 
 type accountingRepository interface {
 	GetAccounts(ctx context.Context, token string) ([]string, error)
+	GetCategories(ctx context.Context, token string) ([]string, error)
 }
 
 type Dependencies struct {
@@ -351,9 +352,15 @@ func (s *Sync) registerSingleTrxIntoAccounting(ctx context.Context, trx *banktyp
 		return err
 	}
 
-	log.Info("accounts registered",
+	categories, err := repo.GetCategories(ctx, cfg.Toshl)
+	if err != nil {
+		return err
+	}
+
+	log.Info("toshl registered",
 		logging.Duration("took", time.Since(now)),
 		logging.Strings("accounts", accounts),
+		logging.Strings("categories", categories),
 	)
 
 	return nil

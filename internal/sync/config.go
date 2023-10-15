@@ -13,6 +13,7 @@ import (
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/bank"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/logging"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/accountingrepo"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/accountingrepo/proxy"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/dateprocessingrepo"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/mailrepo"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/userconfigrepo"
@@ -61,7 +62,11 @@ func getDependencies(ctx context.Context, config types.Config) (*Dependencies, e
 	}
 
 	newToshlClientFunc := func(t string) accountingrepo.ToshlClient {
-		return toshl.NewClient(t, nil)
+		c := toshl.NewClient(t, nil)
+		proxy := &proxy.ToshlCacheClient{
+			Client: c,
+		}
+		return proxy
 	}
 
 	return &Dependencies{

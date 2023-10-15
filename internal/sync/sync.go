@@ -60,6 +60,31 @@ type Sync struct {
 	deps       *Dependencies
 }
 
+func (s *Sync) mailSanityCheck(ctx context.Context) error {
+	log := logging.New()
+
+	mailboxes, err := s.deps.MailRepo.GetAvailableMailboxes(ctx)
+	if err != nil {
+		return err
+	}
+	log.Info("mailboxes", zap.Strings("mailboxes", mailboxes))
+
+	const inboxMailbox = "INBOX"
+	if !slices.Contains(mailboxes, inboxMailbox) {
+		return errs.New("there is no inbox mailbox")
+	}
+
+	if !slices.Contains(mailboxes, s.Config.ParseErrorMailbox) {
+		return errs.New("there is no parse error mailbox: %s", s.Config.ParseErrorMailbox)
+	}
+
+	if !slices.Contains(mailboxes, s.Config.SuccessMailbox) {
+		return errs.New("there is no success mailbox: %s", s.Config.SuccessMailbox)
+	}
+
+	return nil
+}
+
 func (s *Sync) Run(ctx context.Context) (genErr error) {
 	log := logging.New()
 	defer func() { _ = log.Sync() }()
@@ -93,14 +118,8 @@ func (s *Sync) Run(ctx context.Context) (genErr error) {
 	log.Info("last processed date", logging.Time("last_processed_date", lastProcessedDate))
 
 	// TODO: get mailboxes
-	mailboxes, err := s.deps.MailRepo.GetAvailableMailboxes(ctx)
-	if err != nil {
+	if err = s.mailSanityCheck(ctx); err != nil {
 		return err
-	}
-	log.Info("mailboxes", zap.Strings("mailboxes", mailboxes))
-
-	if !slices.Contains(mailboxes, "INBOX") {
-		return errs.New("there is no INBOX mailbox")
 	}
 
 	mailCtx := ctx

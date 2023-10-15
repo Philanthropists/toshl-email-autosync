@@ -2,7 +2,9 @@ package types
 
 type Config struct {
 	Credentials
-	Timezone string `json:"timezone"`
+	Timezone          string `json:"timezone"`
+	ParseErrorMailbox string `json:"parse_error_mailbox"`
+	SuccessMailbox    string `json:"success_mailbox"`
 }
 
 type Credentials struct {

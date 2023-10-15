@@ -9,9 +9,9 @@ import (
 	"github.com/zeebo/errs"
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/bank/banktypes"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/bank/validation"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/types/currency"
 	regexp_util "github.com/Philanthropists/toshl-email-autosync/v2/internal/util/regexp"
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/util/validation"
 )
 
 var bancolombiaErr = errs.Class("bancolombia")
@@ -36,13 +36,8 @@ func (b Bancolombia) ComesFrom(from []string) bool {
 }
 
 func (b Bancolombia) FilterMessage(msg banktypes.Message) bool {
-	from := msg.From()
-	keep := b.ComesFrom(from)
-
-	if keep {
-		text := string(msg.Body())
-		_, keep = regexp_util.MatchesAnyRegexp(regexMatching, text)
-	}
+	text := string(msg.Body())
+	_, keep := regexp_util.MatchesAnyRegexp(regexMatching, text)
 
 	return keep
 }

@@ -77,7 +77,7 @@ func (s *Sync) Run(ctx context.Context) (genErr error) {
 	// - Make a general repository for data that abstracts every action taken
 	// - Always use minimal abstractions for dependencies, and use interfaces always
 	// Always log into the general logger
-	// Always include a DryRun context value
+	// Always include a DryRun context value -- **Maybe not**
 	// Always use errs library for errors
 
 	// TODO: get available banks
@@ -155,9 +155,9 @@ func (s *Sync) Run(ctx context.Context) (genErr error) {
 	// other thing
 	var (
 		fetchFailedMsgs int = 0
-		parseFailedMsgs int = 0
 		totalMsgs       int = 0
 		// successMsgs     int = 0
+		parseFailedMsgs []banktypes.Message
 
 		trxs []*banktypes.TrxInfo
 	)
@@ -170,10 +170,10 @@ func (s *Sync) Run(ctx context.Context) (genErr error) {
 		msg := me.Msg
 
 		for _, bank := range banks {
-			if bank.FilterMessage(msg) {
+			if bank.ComesFrom(msg.From()) && bank.FilterMessage(msg) {
 				trx, err := bank.ExtractTransactionInfoFromMessage(msg)
 				if err != nil {
-					parseFailedMsgs++
+					parseFailedMsgs = append(parseFailedMsgs, msg)
 					break
 				}
 
@@ -181,12 +181,12 @@ func (s *Sync) Run(ctx context.Context) (genErr error) {
 			}
 		}
 
-		totalMsgs++
+		// totalMsgs++
 	}
 
 	log.Info("message fetching status",
 		logging.Int("failed", fetchFailedMsgs),
-		logging.Int("parse_failed", parseFailedMsgs),
+		logging.Int("parse_failed", len(parseFailedMsgs)),
 		logging.Int("total", totalMsgs),
 	)
 

@@ -66,7 +66,7 @@ func HandleRequest(ctx context.Context) error {
 	}
 
 	if version != "" && len(version) >= 3 {
-		ctx = context.WithValue(ctx, types.Version, version[:3])
+		ctx = context.WithValue(ctx, types.VersionCtxKey{}, version[:3])
 	}
 
 	sync := sync.Sync{
@@ -74,8 +74,8 @@ func HandleRequest(ctx context.Context) error {
 		DryRun: false,
 	}
 
-	const awsTimeout = 140 * time.Second
-	ctx, cancel := context.WithTimeout(ctx, awsTimeout)
+	const awsLambdaTimeout = 140 * time.Second
+	ctx, cancel := context.WithTimeout(ctx, awsLambdaTimeout)
 	defer cancel()
 
 	return sync.Run(ctx)

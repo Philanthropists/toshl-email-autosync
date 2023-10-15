@@ -37,7 +37,7 @@ var (
 	cachedLogger *Logger
 )
 
-func SetCustomLogger(logger zapLogger) {
+func SetCustomGlobalLogger(logger zapLogger) {
 	if logger != nil {
 		logOnce.Do(func() {
 			cachedLogger = &Logger{

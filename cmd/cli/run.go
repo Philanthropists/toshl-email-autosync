@@ -12,6 +12,7 @@ import (
 	zap "go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/logging"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
 )
@@ -41,42 +42,62 @@ func getConfig() (types.Config, error) {
 	return config, nil
 }
 
-func getLogger() (*zap.Logger, error) {
+func configureLogger() error {
 	config := zap.NewDevelopmentConfig()
 	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 
-	return config.Build()
+	logger, err := config.Build()
+	if err != nil {
+		return err
+	}
+
+	version := "dev"
+	if GitCommit != "" && len(GitCommit) >= 3 {
+		version = GitCommit[:3]
+	}
+
+	logger = logger.With(zap.String("version", version))
+	logging.SetCustomGlobalLogger(logger)
+
+	return nil
 }
 
 func main() {
 	ctx := context.Background()
-	if GitCommit != "" && len(GitCommit) >= 3 {
-		ctx = context.WithValue(ctx, types.Version, GitCommit[:3])
-	} else {
-		ctx = context.WithValue(ctx, types.Version, "dev")
-	}
 
-	execute := flag.Bool("execute", false, "execute actual changes")
-	timeout := flag.Uint("timeout", 0, "timeout for sync to cancel")
+	var (
+		execute bool
+		timeout string
+	)
+
+	flag.BoolVar(&execute, "execute", false, "execute actual changes")
+	flag.StringVar(&timeout, "timeout", "", "timeout for sync to cancel")
 	flag.Parse()
 
-	logger, err := getLogger()
-	if err != nil {
-		log.Panicf("could not create logger: %v", err)
+	if err := configureLogger(); err != nil {
+		log.Fatal(err)
 	}
+
+	log := logging.New()
 
 	config, err := getConfig()
 	if err != nil {
-		logger.Fatal("failed to get credentials", zap.Error(err))
+		log.Fatal("failed to get config", logging.Error(err))
 	}
 
 	sync := sync.Sync{
 		Config: config,
-		DryRun: !*execute,
+		DryRun: !execute,
 	}
 
-	if *timeout != 0 {
-		t := time.Duration(*timeout) * time.Second
+	if timeout != "" {
+		t, err := time.ParseDuration(timeout)
+		if err != nil {
+			log.Fatal("the specified duration is invalid",
+				logging.String("user_input", timeout),
+				logging.Error(err),
+			)
+		}
 		nctx, cancel := context.WithTimeout(ctx, t)
 		ctx = nctx
 		defer cancel()
@@ -84,6 +105,6 @@ func main() {
 
 	err = sync.Run(ctx)
 	if err != nil {
-		logger.Fatal("failed to run sync", zap.Error(err))
+		log.Fatal("failed to run sync", zap.Error(err))
 	}
 }

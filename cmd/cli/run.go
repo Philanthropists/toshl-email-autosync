@@ -42,11 +42,15 @@ func getConfig() (types.Config, error) {
 	return config, nil
 }
 
-func configureLogger() error {
+func configureLogger(execute bool) error {
 	config := zap.NewDevelopmentConfig()
 	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 
-	logger, err := config.Build()
+	opts := []zap.Option{
+		zap.AddCallerSkip(1),
+	}
+
+	logger, err := config.Build(opts...)
 	if err != nil {
 		return err
 	}
@@ -57,6 +61,9 @@ func configureLogger() error {
 	}
 
 	logger = logger.With(zap.String("version", version))
+	if !execute {
+		logger = logger.With(zap.Bool("dryrun", true))
+	}
 	logging.SetCustomGlobalLogger(logger)
 
 	return nil
@@ -74,7 +81,7 @@ func main() {
 	flag.StringVar(&timeout, "timeout", "", "timeout for sync to cancel")
 	flag.Parse()
 
-	if err := configureLogger(); err != nil {
+	if err := configureLogger(execute); err != nil {
 		log.Fatal(err)
 	}
 

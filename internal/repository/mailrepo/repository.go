@@ -21,7 +21,8 @@ type IMAPClient interface {
 	UidSearch(criteria *imap.SearchCriteria) (seqNums []uint32, err error)
 	UidFetch(seqset *imap.SeqSet, items []imap.FetchItem, ch chan *imap.Message) error
 	// Copy(seqset *imap.SeqSet, dest string) error
-	UidStore(*imap.SeqSet, imap.StoreItem, interface{}, chan *imap.Message) error
+	// UidStore(*imap.SeqSet, imap.StoreItem, interface{}, chan *imap.Message) error
+	UidMove(seqset *imap.SeqSet, dest string) error
 }
 
 type Message struct {
@@ -447,5 +448,21 @@ func (r *IMAPRepository) MoveMessagesToMailbox(
 	toMailbox string,
 	msgIDs ...uint64,
 ) error {
-	panic("not implemented")
+	if len(msgIDs) == 0 {
+		// no messages to move
+		return nil
+	}
+
+	ids := make([]uint32, 0, len(msgIDs))
+	for _, id := range msgIDs {
+		ids = append(ids, uint32(id))
+	}
+
+	seqset := new(imap.SeqSet)
+	seqset.AddNum(ids...)
+
+	c := r.getClient()
+	err := c.UidMove(seqset, toMailbox)
+
+	return errs.Wrap(err)
 }

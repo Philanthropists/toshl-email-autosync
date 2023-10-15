@@ -19,6 +19,10 @@ func Any[S ~string](s S, v any) Field {
 	return zap.Any(string(s), v)
 }
 
+func Bool[S ~string](s S, v bool) Field {
+	return zap.Bool(string(s), v)
+}
+
 func Int[S ~string, T constraints.Signed](s S, v T) Field {
 	return zap.Int64(string(s), int64(v))
 }

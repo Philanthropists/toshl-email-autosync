@@ -62,7 +62,11 @@ func configureLogger() error {
 	config := zap.NewDevelopmentConfig()
 	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
 
-	logger, err := config.Build()
+	opts := []zap.Option{
+		zap.AddCallerSkip(1),
+	}
+
+	logger, err := config.Build(opts...)
 	if err != nil {
 		return err
 	}

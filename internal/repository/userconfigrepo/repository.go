@@ -20,10 +20,17 @@ const (
 	defaultExpiration = cache.NoExpiration
 )
 
+type MappingConfig map[string]string
+
+type ToshlConfig struct {
+	Token string `json:"token" dynamodbav:"Token"`
+}
+
 type UserConfig struct {
-	Email             string `json:"email"               dynamodbav:"Email"`
-	SMSDeliveryNumber string `json:"sms_delivery_number" dynamodbav:"SMSDeliveryNumber"`
-	Toshl             string `json:"toshl-token"         dynamodbav:"ToshlToken"`
+	Email             string                   `json:"email"               dynamodbav:"Email"`
+	SMSDeliveryNumber string                   `json:"sms_delivery_number" dynamodbav:"SMSDeliveryNumber"`
+	Toshl             ToshlConfig              `json:"toshl"               dynamodbav:"Toshl"`
+	Mapping           map[string]MappingConfig `json:"account_mappings"    dynamodbav:"AccountMappings"`
 }
 
 type inMemoryCache interface {

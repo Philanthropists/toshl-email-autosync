@@ -4,8 +4,12 @@ import (
 	"context"
 	"sync"
 
+	"slices"
+
 	"github.com/Philanthropists/toshl-go"
 	"github.com/zeebo/errs"
+
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/accountingrepo/accountingrepotypes"
 )
 
 type ToshlClient interface {
@@ -14,6 +18,12 @@ type ToshlClient interface {
 	CreateCategory(category *toshl.Category) error
 	CreateEntry(entry *toshl.Entry) error
 }
+
+const (
+	Income      = "income"
+	Expense     = "expense"
+	Transaction = "transaction"
+)
 
 type ToshlRepository struct {
 	ClientBuilder func(string) ToshlClient
@@ -30,40 +40,88 @@ func (r *ToshlRepository) getClient(token string) ToshlClient {
 	return c.(ToshlClient)
 }
 
-func (r *ToshlRepository) GetAccounts(ctx context.Context, token string) ([]string, error) {
+func (r *ToshlRepository) GetAccounts(
+	ctx context.Context,
+	token string,
+) ([]accountingrepotypes.Account, error) {
 	c := r.getClient(token)
 
-	return doCancelableOperation[[]string](ctx, func() ([]string, error) {
+	return doCancelableOperation(ctx, func() ([]accountingrepotypes.Account, error) {
 		ac, err := c.Accounts(nil)
 		if err != nil {
 			return nil, err
 		}
 
-		as := make([]string, 0, len(ac))
+		as := make([]accountingrepotypes.Account, 0, len(ac))
 		for _, a := range ac {
-			as = append(as, a.Name)
+			it := accountingrepotypes.Account{
+				ID:   a.ID,
+				Name: a.Name,
+			}
+			as = append(as, it)
 		}
 
 		return as, nil
 	})
 }
 
-func (r *ToshlRepository) GetCategories(ctx context.Context, token string) ([]string, error) {
+func (r *ToshlRepository) GetCategories(
+	ctx context.Context,
+	token string,
+) ([]accountingrepotypes.Category, error) {
 	c := r.getClient(token)
 
-	return doCancelableOperation[[]string](ctx, func() ([]string, error) {
+	return doCancelableOperation(ctx, func() ([]accountingrepotypes.Category, error) {
 		cats, err := c.Categories(nil)
 		if err != nil {
 			return nil, err
 		}
 
-		cs := make([]string, 0, len(cats))
+		cs := make([]accountingrepotypes.Category, 0, len(cats))
 		for _, c := range cats {
-			cs = append(cs, c.Name)
+			it := accountingrepotypes.Category{
+				ID:   c.ID,
+				Name: c.Name,
+				Type: c.Type,
+			}
+			cs = append(cs, it)
 		}
 
 		return cs, nil
 	})
+}
+
+func (r *ToshlRepository) CreateCategory(
+	ctx context.Context, token, catType, category string,
+) (accountingrepotypes.Category, error) {
+	c := r.getClient(token)
+
+	validCategoryTypes := []string{
+		Income,
+		Expense,
+		Transaction,
+	}
+
+	if !slices.Contains(validCategoryTypes, catType) {
+		return accountingrepotypes.Category{}, errs.New("%q is not a valid category", catType)
+	}
+
+	cat := toshl.Category{
+		Name: category,
+		Type: catType,
+	}
+
+	err := c.CreateCategory(&cat)
+	if err != nil {
+		return accountingrepotypes.Category{}, err
+	}
+	id := accountingrepotypes.Category{
+		ID:   cat.ID,
+		Name: cat.Name,
+		Type: cat.Type,
+	}
+
+	return id, nil
 }
 
 func doCancelableOperation[T any](ctx context.Context, op func() (T, error)) (T, error) {

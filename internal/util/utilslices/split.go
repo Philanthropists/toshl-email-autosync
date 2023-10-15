@@ -1,4 +1,4 @@
-package slices
+package utilslices
 
 import "github.com/zeebo/errs"
 

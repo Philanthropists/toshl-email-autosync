@@ -11,7 +11,7 @@ import (
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/bank/banktypes"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/bank/validation"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/types/currency"
-	regexp_util "github.com/Philanthropists/toshl-email-autosync/v2/internal/util/regexp"
+	regexp_util "github.com/Philanthropists/toshl-email-autosync/v2/internal/util/utilregexp"
 )
 
 var bancolombiaErr = errs.Class("bancolombia")

@@ -2,7 +2,6 @@ package sync
 
 import (
 	"context"
-	"runtime"
 	"sync"
 	"time"
 
@@ -13,11 +12,11 @@ import (
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/bank/banktypes"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/logging"
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/mailrepo"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/accountingrepo/accountingrepotypes"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/mailrepo/mailrepotypes"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/userconfigrepo"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/types/result"
-	utilslices "github.com/Philanthropists/toshl-email-autosync/v2/internal/util/slices"
 )
 
 var syncErr = errs.Class("sync")
@@ -35,7 +34,7 @@ type mailRepository interface {
 	GetAvailableMailboxes(context.Context) ([]string, error)
 	GetMessagesFromMailbox(
 		context.Context, string, time.Time,
-	) (<-chan mailrepo.MessageErr, error)
+	) (<-chan result.Result[mailrepotypes.Message], error)
 	MoveMessagesToMailbox(context.Context, string, ...uint32) error
 }
 
@@ -44,8 +43,12 @@ type userConfigRepository interface {
 }
 
 type accountingRepository interface {
-	GetAccounts(ctx context.Context, token string) ([]string, error)
-	GetCategories(ctx context.Context, token string) ([]string, error)
+	GetAccounts(ctx context.Context, token string) ([]accountingrepotypes.Account, error)
+	GetCategories(ctx context.Context, token string) ([]accountingrepotypes.Category, error)
+	CreateCategory(
+		ctx context.Context,
+		token, catType, category string,
+	) (accountingrepotypes.Category, error)
 }
 
 type Dependencies struct {
@@ -136,7 +139,7 @@ func (s *Sync) Run(ctx context.Context) (genErr error) {
 		const timeFactor = 0.4
 		timeSlot := time.Duration(timeFactor * float64(remainingTime))
 
-		log.Info("we have a deadline, setting a time slot for messages",
+		log.Info("we have a deadline, setting a time slot for fetching messages",
 			logging.Time("deadline", deadline),
 			logging.Duration("timeslot", timeSlot),
 			logging.Float("time_factor", timeFactor),
@@ -190,12 +193,12 @@ func (s *Sync) Run(ctx context.Context) (genErr error) {
 		trxs []*banktypes.TrxInfo
 	)
 	for me := range messages {
-		if me.Err != nil {
+		if me.Err() != nil {
 			fetchFailedMsgs++
 			continue
 		}
 
-		msg := me.Msg
+		msg := me.Value()
 
 		for _, bank := range banks {
 			if bank.ComesFrom(msg.From()) && bank.FilterMessage(msg) {
@@ -277,118 +280,4 @@ func (s *Sync) moveParseFailedMessages(ctx context.Context, msgs []banktypes.Mes
 	}
 
 	return nil
-}
-
-func (s *Sync) registerTrxsIntoAccounting(
-	ctx context.Context,
-	trxs []*banktypes.TrxInfo,
-) (<-chan result.Result[*banktypes.TrxInfo], error) {
-	routines := runtime.NumCPU()
-	routines = min(routines, len(trxs))
-
-	if routines == 0 {
-		// no trxs to register
-		c := make(chan result.Result[*banktypes.TrxInfo])
-		close(c)
-		return c, nil
-	}
-
-	buckets, err := utilslices.Split(routines, trxs)
-	if err != nil {
-		return nil, errs.Wrap(err)
-	}
-
-	out := make(chan result.Result[*banktypes.TrxInfo], routines)
-
-	var wg sync.WaitGroup
-	wg.Add(routines)
-	for i := 0; i < routines; i++ {
-		go func(
-			ctx context.Context,
-			out chan<- result.Result[*banktypes.TrxInfo],
-			trxs []*banktypes.TrxInfo,
-		) {
-			defer wg.Done()
-
-			for _, t := range trxs {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-				}
-
-				err := s.registerSingleTrxIntoAccounting(ctx, t)
-				res := &result.ConcreteResult[*banktypes.TrxInfo]{
-					Val:   t,
-					Error: err,
-				}
-
-				out <- res
-			}
-		}(ctx, out, buckets[i])
-	}
-
-	go func() {
-		defer close(out)
-		wg.Wait()
-	}()
-
-	return out, nil
-}
-
-func (s *Sync) registerSingleTrxIntoAccounting(ctx context.Context, trx *banktypes.TrxInfo) error {
-	log := logging.New()
-
-	repo := s.deps.AccountingRepo
-
-	cfg, err := s.getUserConfigFromCandidates(ctx, trx.OriginMessage.To())
-	if err != nil {
-		return err
-	}
-
-	now := time.Now()
-	accounts, err := repo.GetAccounts(ctx, cfg.Toshl)
-	if err != nil {
-		return err
-	}
-
-	categories, err := repo.GetCategories(ctx, cfg.Toshl)
-	if err != nil {
-		return err
-	}
-
-	log.Info("toshl registered",
-		logging.Duration("took", time.Since(now)),
-		logging.Strings("accounts", accounts),
-		logging.Strings("categories", categories),
-	)
-
-	return nil
-}
-
-func (s *Sync) getUserConfigFromCandidates(
-	ctx context.Context,
-	candidates []string,
-) (userconfigrepo.UserConfig, error) {
-	cfgRepo := s.deps.UserCfgRepo
-
-	found := false
-	var userCfg userconfigrepo.UserConfig
-	for _, c := range candidates {
-		cfg, err := cfgRepo.GetUserConfigFromEmail(ctx, c)
-		if err != nil && ctx.Err() != nil {
-			return userconfigrepo.UserConfig{}, ctx.Err()
-		}
-
-		if err == nil {
-			userCfg = cfg
-			found = true
-		}
-	}
-
-	if !found {
-		return userconfigrepo.UserConfig{}, errs.New("could not find user config from candidates")
-	}
-
-	return userCfg, nil
 }

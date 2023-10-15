@@ -1,6 +1,7 @@
 package logging
 
 import (
+	"context"
 	"log"
 	"os"
 	"sync"
@@ -14,6 +15,8 @@ type (
 	Field  = zapcore.Field
 	Option = zap.Option
 )
+
+type LoggerCtxKey struct{}
 
 type zapLogger interface {
 	DPanic(msg string, fields ...zapcore.Field)
@@ -90,6 +93,18 @@ func New() *Logger {
 	return cachedLogger
 }
 
+func FromContext(ctx context.Context) *Logger {
+	if ctx == nil {
+		return New()
+	}
+
+	if l, ok := ctx.Value(LoggerCtxKey{}).(*Logger); ok {
+		return l
+	}
+
+	return New()
+}
+
 func (l Logger) DPanic(msg string, fields ...Field) {
 	l.log.DPanic(msg, fields...)
 }
@@ -134,4 +149,8 @@ func (l Logger) WithOptions(opts ...Option) *Logger {
 	return &Logger{
 		log: logger,
 	}
+}
+
+func (l *Logger) GetContext(ctx context.Context) context.Context {
+	return context.WithValue(ctx, LoggerCtxKey{}, l)
 }

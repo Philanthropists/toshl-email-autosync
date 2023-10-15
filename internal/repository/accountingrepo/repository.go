@@ -9,6 +9,7 @@ import (
 	"github.com/Philanthropists/toshl-go"
 	"github.com/zeebo/errs"
 
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/logging"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/accountingrepo/accountingrepotypes"
 )
 
@@ -122,6 +123,41 @@ func (r *ToshlRepository) CreateCategory(
 	}
 
 	return id, nil
+}
+
+func (r *ToshlRepository) CreateEntry(
+	ctx context.Context, token string, entryInput accountingrepotypes.CreateEntryInput,
+) error {
+	log := logging.FromContext(ctx)
+
+	c := r.getClient(token)
+
+	const dateFormat = "2006-01-02"
+
+	date := entryInput.Date.Format(dateFormat)
+	description := entryInput.Description
+
+	newEntry := toshl.Entry{
+		Amount: entryInput.Currency.Number,
+		Currency: toshl.Currency{
+			Code: entryInput.Currency.Code,
+		},
+		Date:        date,
+		Description: &description,
+		Account:     entryInput.AccountID,
+		Category:    entryInput.CategoryID,
+	}
+
+	log.Debug("entry to create",
+		logging.Any("entry", newEntry),
+	)
+
+	err := c.CreateEntry(&newEntry)
+	if err != nil {
+		return errs.New("could not create entry: %w", err)
+	}
+
+	return nil
 }
 
 func doCancelableOperation[T any](ctx context.Context, op func() (T, error)) (T, error) {

@@ -49,6 +49,11 @@ type accountingRepository interface {
 		ctx context.Context,
 		token, catType, category string,
 	) (accountingrepotypes.Category, error)
+	CreateEntry(
+		ctx context.Context,
+		token string,
+		entryInput accountingrepotypes.CreateEntryInput,
+	) error
 }
 
 type Dependencies struct {
@@ -237,11 +242,11 @@ func (s *Sync) Run(ctx context.Context) (genErr error) {
 		return err
 	}
 
-	for t := range processingTrxs {
-		log.Info("trx processed",
-			logging.Any("trx", t),
-		)
+	i := 0
+	for range processingTrxs {
+		i++
 	}
+	log.Debug("processed", logging.Int("msgs", i))
 
 	// TODO: each sucessfull to register into accounting is to be archived into the 'processed' mailbox
 

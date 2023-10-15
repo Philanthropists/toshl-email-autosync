@@ -2,11 +2,11 @@ package sync
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 	"runtime"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/zeebo/errs"
 
@@ -14,6 +14,7 @@ import (
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/logging"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/accountingrepo/accountingrepotypes"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/userconfigrepo"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/types/currency"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/types/result"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/util/utilregexp"
 	utilslices "github.com/Philanthropists/toshl-email-autosync/v2/internal/util/utilslices"
@@ -96,7 +97,6 @@ func (s *Sync) registerSingleTrxIntoAccounting(ctx context.Context, trx *banktyp
 		return err
 	}
 
-	now := time.Now()
 	accounts, err := repo.GetAccounts(ctx, cfg.Toshl.Token)
 	if err != nil {
 		return err
@@ -111,22 +111,50 @@ func (s *Sync) registerSingleTrxIntoAccounting(ctx context.Context, trx *banktyp
 		return err
 	}
 
-	log.Debug("toshl registered",
-		logging.Duration("took", time.Since(now)),
-		logging.Any("accounts", accounts),
+	log = log.With(
 		logging.String("category_id", categoryID),
 		logging.String("category_type", categoryType),
 		logging.String("category_name", categoryName),
-		logging.Any("user_cfg", cfg),
 	)
 
 	accountMappings := getAccountsMapping(accounts, cfg, trx.Bank.String())
 
-	log.Debug("account mappings",
-		logging.Any("mappings", accountMappings),
+	// log.Debug("account mappings",
+	// 	logging.Any("mappings", accountMappings),
+	// )
+
+	amount := trx.Value.Number
+	if trx.Type == banktypes.Expense {
+		amount *= -1
+	}
+
+	account, ok := accountMappings[trx.Account]
+	if !ok {
+		return errs.New("transaction does not have an assigned account %q", trx.Account)
+	}
+
+	entryInput := accountingrepotypes.CreateEntryInput{
+		Date: trx.Date.In(s.deps.TimeLocale),
+		Currency: currency.Amount{
+			Code:   "COP",
+			Number: amount,
+		},
+		Description: fmt.Sprintf("** %s de %s", trx.Action, trx.Description),
+		AccountID:   account.ID,
+		CategoryID:  categoryID,
+	}
+
+	log.Debug("entry to be created",
+		logging.Any("entry", entryInput),
 	)
 
-	return nil
+	if s.DryRun {
+		log.Info("not creating entry due to dryrun")
+		return nil
+	}
+
+	err = repo.CreateEntry(ctx, cfg.Toshl.Token, entryInput)
+	return err
 }
 
 func getAccountsMapping(
@@ -177,7 +205,7 @@ func (s *Sync) createCategoryIfAbsent(
 	for _, c := range categories {
 		if c.Name == category {
 			if c.Type != catType {
-				log.Warn("categories mismatch",
+				log.Warn("category types mismatch",
 					logging.String("actual", c.Type),
 					logging.String("expected", catType),
 				)

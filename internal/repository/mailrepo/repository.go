@@ -13,6 +13,7 @@ import (
 	"github.com/zeebo/errs"
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/logging"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/util/slices"
 )
 
 type IMAPClient interface {
@@ -96,6 +97,11 @@ func (m Message) Date() time.Time {
 
 func (m Message) Body() []byte {
 	return m.BodyData
+}
+
+func (m Message) MarshalText() ([]byte, error) {
+	s := fmt.Sprintf("%d - %s", m.ID(), m.Subject())
+	return []byte(s), nil
 }
 
 type MessageErr struct {
@@ -210,7 +216,7 @@ func (r *IMAPRepository) GetMessagesFromMailbox(
 	criteria.Since = since
 	ids, err := client.UidSearch(criteria)
 	if err != nil {
-		return nil, err
+		return nil, errs.Wrap(err)
 	}
 
 	log := logging.New()
@@ -230,7 +236,7 @@ func (r *IMAPRepository) GetMessagesFromMailbox(
 		return c, nil
 	}
 
-	buckets, err := divideSlice(routines, ids)
+	buckets, err := slices.Split(routines, ids)
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
@@ -249,6 +255,7 @@ func (r *IMAPRepository) GetMessagesFromMailbox(
 				log.Error("could not get messages from message bucket",
 					logging.Error(err),
 				)
+				return
 			}
 
 			for {
@@ -296,7 +303,7 @@ func (r *IMAPRepository) getMessagesFromMailbox(
 	messages := make(chan *imap.Message)
 
 	errCh := make(chan error)
-	go func() {
+	go func(out chan<- error) {
 		defer close(errCh)
 
 		fetch := imap.FetchAll.Expand()
@@ -315,18 +322,18 @@ func (r *IMAPRepository) getMessagesFromMailbox(
 			fetchErr = errs.New("failed to fetch messages: %w", fetchErr)
 		}
 
-		errCh <- fetchErr
-	}()
+		out <- fetchErr
+	}(errCh)
 
 	ctx, cancel := context.WithCancel(ctx)
 	msgs := r.getCompleteMessages(ctx, mailbox, messages)
 
-	go func() {
+	go func(in <-chan error) {
 		select {
 		case <-ctx.Done():
 			return
 
-		case e, ok := <-errCh:
+		case e, ok := <-in:
 			if ok && e != nil {
 				defer cancel()
 				log := logging.New()
@@ -337,30 +344,9 @@ func (r *IMAPRepository) getMessagesFromMailbox(
 				)
 			}
 		}
-	}()
+	}(errCh)
 
 	return msgs, nil
-}
-
-func divideSlice[T any](n int, v []T) ([][]T, error) {
-	if n <= 0 {
-		return nil, errs.New("n:%d must be greater than zero", n)
-	}
-
-	div := make(map[int][]T, n)
-	for i, val := range v {
-		idx := i % n
-		l := div[idx]
-		l = append(l, val)
-		div[idx] = l
-	}
-
-	var b [][]T
-	for _, v := range div {
-		b = append(b, v)
-	}
-
-	return b, nil
 }
 
 func (r *IMAPRepository) getCompleteMessages(

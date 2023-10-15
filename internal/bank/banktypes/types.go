@@ -6,11 +6,10 @@ import (
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/types/currency"
 )
 
-type MessageID uint64
-
 type Message interface {
 	ID() uint32
 	From() []string
+	To() []string
 	Subject() string
 	Date() time.Time
 	Body() []byte
@@ -44,7 +43,7 @@ type TrxInfo struct {
 	Description   string
 	Account       string
 	Value         currency.Amount
-	CorrelationID MessageID
+	OriginMessage Message
 	Type          TrxType
 }
 

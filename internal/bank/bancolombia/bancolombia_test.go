@@ -119,6 +119,7 @@ func generateCurrency(code string, rate float64) currency.Amount {
 type testMessage struct {
 	id      uint32
 	from    []string
+	to      []string
 	subject string
 	date    time.Time
 	body    []byte
@@ -126,6 +127,7 @@ type testMessage struct {
 
 func (m testMessage) ID() uint32      { return m.id }
 func (m testMessage) From() []string  { return m.from }
+func (m testMessage) To() []string    { return m.to }
 func (m testMessage) Subject() string { return m.subject }
 func (m testMessage) Date() time.Time { return m.date }
 func (m testMessage) Body() []byte    { return m.body }
@@ -134,6 +136,7 @@ func generateTestMessage(body string) banktypes.Message {
 	return testMessage{
 		id:      1,
 		from:    []string{},
+		to:      []string{},
 		subject: "",
 		date:    time.Now(),
 		body:    []byte(body),

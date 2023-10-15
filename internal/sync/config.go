@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/Philanthropists/toshl-go"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/emersion/go-imap/client"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/bank"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/logging"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/accountingrepo"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/dateprocessingrepo"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/mailrepo"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/userconfigrepo"
@@ -58,6 +60,10 @@ func getDependencies(ctx context.Context, config types.Config) (*Dependencies, e
 		return cl
 	}
 
+	newToshlClientFunc := func(t string) accountingrepo.ToshlClient {
+		return toshl.NewClient(t, nil)
+	}
+
 	return &Dependencies{
 		TimeLocale: loc,
 		BanksRepo:  bank.Repository{},
@@ -69,6 +75,9 @@ func getDependencies(ctx context.Context, config types.Config) (*Dependencies, e
 		},
 		UserCfgRepo: &userconfigrepo.DynamoDBRepository{
 			Client: dynamoClient,
+		},
+		AccountingRepo: &accountingrepo.ToshlRepository{
+			ClientBuilder: newToshlClientFunc,
 		},
 	}, nil
 }

@@ -145,7 +145,7 @@ func (b Bancolombia) ExtractTransactionInfoFromMessage(
 		Description:   place,
 		Account:       account,
 		Value:         value,
-		CorrelationID: banktypes.MessageID(msg.ID()),
+		OriginMessage: msg,
 		Type:          banktypes.TrxType(trxType),
 	}, nil
 }

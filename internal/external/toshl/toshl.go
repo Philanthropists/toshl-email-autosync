@@ -3,16 +3,16 @@ package toshl
 import (
 	"errors"
 
-	_toshl "github.com/Philanthropists/toshl-go"
+	"github.com/Philanthropists/toshl-go"
 
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/external/toshl/types"
+	types "github.com/Philanthropists/toshl-email-autosync/v2/internal/external/toshl/toshltypes"
 )
 
 type toshlClient interface {
-	Categories(params *_toshl.CategoryQueryParams) ([]_toshl.Category, error)
-	Accounts(params *_toshl.AccountQueryParams) ([]_toshl.Account, error)
-	CreateCategory(category *_toshl.Category) error
-	CreateEntry(entry *_toshl.Entry) error
+	Categories(params *toshl.CategoryQueryParams) ([]toshl.Category, error)
+	Accounts(params *toshl.AccountQueryParams) ([]toshl.Account, error)
+	CreateCategory(category *toshl.Category) error
+	CreateEntry(entry *toshl.Entry) error
 }
 
 type Client struct {
@@ -25,7 +25,7 @@ func NewToshlClient(token string) (Client, error) {
 	}
 
 	return Client{
-		ToshlClient: _toshl.NewClient(token, nil),
+		ToshlClient: toshl.NewClient(token, nil),
 	}, nil
 }
 

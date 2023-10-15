@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"runtime"
 	"sync"
 	"time"
 
@@ -15,13 +16,11 @@ import (
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/mailrepo"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/userconfigrepo"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/types/result"
+	utilslices "github.com/Philanthropists/toshl-email-autosync/v2/internal/util/slices"
 )
 
 var syncErr = errs.Class("sync")
-
-type (
-	VersionCtxKey struct{}
-)
 
 type banksRepository interface {
 	GetBanks(context.Context) []banktypes.BankDelegate
@@ -44,12 +43,17 @@ type userConfigRepository interface {
 	GetUserConfigFromEmail(context.Context, string) (userconfigrepo.UserConfig, error)
 }
 
+type accountingRepository interface {
+	GetAccounts(ctx context.Context, token string) ([]string, error)
+}
+
 type Dependencies struct {
-	TimeLocale  *time.Location
-	BanksRepo   banksRepository
-	DateRepo    dateRepository
-	MailRepo    mailRepository
-	UserCfgRepo userConfigRepository
+	TimeLocale     *time.Location
+	BanksRepo      banksRepository
+	DateRepo       dateRepository
+	MailRepo       mailRepository
+	UserCfgRepo    userConfigRepository
+	AccountingRepo accountingRepository
 }
 
 type Sync struct {
@@ -143,7 +147,11 @@ func (s *Sync) Run(ctx context.Context) (genErr error) {
 	}
 
 	// TODO: get all mail entries from mailbox, also beware of context cancelation
-	messages, err := s.deps.MailRepo.GetMessagesFromMailbox(mailCtx, "INBOX", lastProcessedDate)
+	messages, err := s.deps.MailRepo.GetMessagesFromMailbox(
+		mailCtx,
+		"Bancolombia",
+		lastProcessedDate,
+	)
 	if err != nil {
 		return err
 	}
@@ -220,6 +228,16 @@ func (s *Sync) Run(ctx context.Context) (genErr error) {
 	}
 
 	// TODO: successful parses, are now being registered into the accounting software
+	processingTrxs, err := s.registerTrxsIntoAccounting(ctx, trxs)
+	if err != nil {
+		return err
+	}
+
+	for t := range processingTrxs {
+		log.Info("trx processed",
+			logging.Any("trx", t),
+		)
+	}
 
 	// TODO: each sucessfull to register into accounting is to be archived into the 'processed' mailbox
 
@@ -258,4 +276,112 @@ func (s *Sync) moveParseFailedMessages(ctx context.Context, msgs []banktypes.Mes
 	}
 
 	return nil
+}
+
+func (s *Sync) registerTrxsIntoAccounting(
+	ctx context.Context,
+	trxs []*banktypes.TrxInfo,
+) (<-chan result.Result[*banktypes.TrxInfo], error) {
+	routines := runtime.NumCPU()
+	routines = min(routines, len(trxs))
+
+	if routines == 0 {
+		// no trxs to register
+		c := make(chan result.Result[*banktypes.TrxInfo])
+		close(c)
+		return c, nil
+	}
+
+	buckets, err := utilslices.Split(routines, trxs)
+	if err != nil {
+		return nil, errs.Wrap(err)
+	}
+
+	out := make(chan result.Result[*banktypes.TrxInfo], routines)
+
+	var wg sync.WaitGroup
+	wg.Add(routines)
+	for i := 0; i < routines; i++ {
+		go func(
+			ctx context.Context,
+			out chan<- result.Result[*banktypes.TrxInfo],
+			trxs []*banktypes.TrxInfo,
+		) {
+			defer wg.Done()
+
+			for _, t := range trxs {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
+				err := s.registerSingleTrxIntoAccounting(ctx, t)
+				res := &result.ConcreteResult[*banktypes.TrxInfo]{
+					Val:   t,
+					Error: err,
+				}
+
+				out <- res
+			}
+		}(ctx, out, buckets[i])
+	}
+
+	go func() {
+		defer close(out)
+		wg.Wait()
+	}()
+
+	return out, nil
+}
+
+func (s *Sync) registerSingleTrxIntoAccounting(ctx context.Context, trx *banktypes.TrxInfo) error {
+	log := logging.New()
+
+	repo := s.deps.AccountingRepo
+
+	cfg, err := s.getUserConfigFromCandidates(ctx, trx.OriginMessage.To())
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	accounts, err := repo.GetAccounts(ctx, cfg.Toshl)
+	if err != nil {
+		return err
+	}
+
+	log.Info("accounts registered",
+		logging.Duration("took", time.Since(now)),
+		logging.Strings("accounts", accounts),
+	)
+
+	return nil
+}
+
+func (s *Sync) getUserConfigFromCandidates(
+	ctx context.Context,
+	candidates []string,
+) (userconfigrepo.UserConfig, error) {
+	cfgRepo := s.deps.UserCfgRepo
+
+	found := false
+	var userCfg userconfigrepo.UserConfig
+	for _, c := range candidates {
+		cfg, err := cfgRepo.GetUserConfigFromEmail(ctx, c)
+		if err != nil && ctx.Err() != nil {
+			return userconfigrepo.UserConfig{}, ctx.Err()
+		}
+
+		if err == nil {
+			userCfg = cfg
+			found = true
+		}
+	}
+
+	if !found {
+		return userconfigrepo.UserConfig{}, errs.New("could not find user config from candidates")
+	}
+
+	return userCfg, nil
 }

@@ -48,7 +48,7 @@ type dynamoClient interface {
 }
 
 type DynamoDBRepository struct {
-	DynamoDBClient dynamoClient
+	Client dynamoClient
 }
 
 func (r DynamoDBRepository) GetLastProcessedDate(
@@ -63,7 +63,7 @@ func (r DynamoDBRepository) GetLastProcessedDate(
 		return overrideDate, nil
 	}
 
-	if r.DynamoDBClient == nil {
+	if r.Client == nil {
 		return time.Time{}, errs.New("dynamoDB client is nil")
 	}
 
@@ -128,7 +128,7 @@ func (r DynamoDBRepository) SaveProcessedDate(
 		UpdateExpression:          aws.String(exp),
 	}
 
-	_, err = r.DynamoDBClient.UpdateItem(ctx, ps)
+	_, err = r.Client.UpdateItem(ctx, ps)
 	if err != nil {
 		return errs.New("could not update processing date: %w", err)
 	}
@@ -179,7 +179,7 @@ func (r DynamoDBRepository) getDateFromStorage(
 		return time.Time{}, err
 	}
 
-	res, err := r.DynamoDBClient.GetItem(ctx, &dynamodb.GetItemInput{
+	res, err := r.Client.GetItem(ctx, &dynamodb.GetItemInput{
 		Key:       key,
 		TableName: aws.String(table),
 	})

@@ -38,3 +38,11 @@ func Error(err error) Field {
 func String[U, V ~string](s U, v V) Field {
 	return zap.String(string(s), string(v))
 }
+
+func Strings[U, V ~string](s U, v []V) Field {
+	var ss []string = make([]string, 0, len(v))
+	for _, s := range v {
+		ss = append(ss, string(s))
+	}
+	return zap.Strings(string(s), ss)
+}

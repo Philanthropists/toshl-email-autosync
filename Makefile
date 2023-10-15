@@ -6,7 +6,7 @@ flags := -ldflags=${ldflags} -gcflags=${gcflags}
 docker-build-push: docker-build docker-push
 
 .PHONY: build
-build: bin clean vendor fmt credentials test
+build: bin clean fmt credentials test
 	go build -o bin/run cmd/cli/run.go
 	go build -o bin/mail cmd/mail/run.go
 	go build -o bin/dynamodb cmd/dynamodb/run.go
@@ -15,7 +15,7 @@ build: bin clean vendor fmt credentials test
 	cp credentials.json bin/
 
 .PHONY: build-for-lambda
-build-for-lambda: bin clean vendor fmt credentials test
+build-for-lambda: bin clean fmt credentials test
 	GOOS=linux \
 	GOARCH=amd64 \
 	CGO_ENABLED=0 \
@@ -82,10 +82,6 @@ staticcheck: vet
 .PHONY: vet
 vet:
 	go vet ./...
-
-.PHONY: vendor
-vendor: tidy
-	go mod vendor
 
 .PHONY: tidy
 tidy:

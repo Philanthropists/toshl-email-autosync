@@ -43,6 +43,48 @@ func (m Message) From() []string {
 	return from
 }
 
+func (m Message) To() []string {
+	addrs := m.Message.Envelope.To
+	to := make([]string, 0, len(addrs))
+	for _, addr := range addrs {
+		to = append(to, addr.Address())
+	}
+
+	return to
+}
+
+func (m Message) Senders() []string {
+	addrs := m.Message.Envelope.Sender
+	senders := make([]string, 0, len(addrs))
+	for _, addr := range addrs {
+		senders = append(senders, addr.Address())
+	}
+
+	return senders
+}
+
+func (m Message) ReplyTo() []string {
+	addrs := m.Message.Envelope.ReplyTo
+	senders := make([]string, 0, len(addrs))
+	for _, addr := range addrs {
+		senders = append(senders, addr.Address())
+	}
+
+	return senders
+}
+
+func (m Message) Items() []string {
+	its := make([]string, 0, len(m.Message.Items))
+	for k := range m.Message.Items {
+		its = append(its, string(k))
+	}
+	return its
+}
+
+func (m Message) Flags() []string {
+	return m.Message.Flags
+}
+
 func (m Message) Subject() string {
 	return m.Message.Envelope.Subject
 }
@@ -177,7 +219,16 @@ func (r *IMAPRepository) GetMessagesFromMailbox(
 		logging.Int("len", len(ids)),
 	)
 
-	routines := runtime.NumCPU()
+	var routines int = runtime.NumCPU()
+	routines = min(routines, len(ids))
+
+	if routines == 0 {
+		// no messages to process
+		c := make(chan MessageErr)
+		close(c)
+		return c, nil
+	}
+
 	buckets, err := divideSlice(routines, ids)
 	if err != nil {
 		return nil, errs.Wrap(err)
@@ -247,8 +298,17 @@ func (r *IMAPRepository) getMessagesFromMailbox(
 	go func() {
 		defer close(errCh)
 
-		var section imap.BodySectionName
-		fetch := []imap.FetchItem{section.FetchItem(), imap.FetchEnvelope}
+		fetch := imap.FetchAll.Expand()
+		sections := []imap.BodySectionName{
+			{
+				BodyPartName: imap.BodyPartName{},
+				Peek:         true,
+			},
+		}
+		for _, s := range sections {
+			fetch = append(fetch, s.FetchItem())
+		}
+
 		fetchErr := client.UidFetch(seqset, fetch, messages)
 		if fetchErr != nil {
 			fetchErr = errs.New("failed to fetch messages: %w", fetchErr)
@@ -282,8 +342,8 @@ func (r *IMAPRepository) getMessagesFromMailbox(
 }
 
 func divideSlice[T any](n int, v []T) ([][]T, error) {
-	if n == 0 {
-		return nil, errs.New("n:%d cannot be zero", n)
+	if n <= 0 {
+		return nil, errs.New("n:%d must be greater than zero", n)
 	}
 
 	div := make(map[int][]T, n)
@@ -353,6 +413,7 @@ func (r *IMAPRepository) getCompleteMessage(
 	if err != nil && mr == nil {
 		return Message{}, errs.New("could not create reader: %w", err)
 	}
+	defer func() { _ = mr.Close() }()
 
 	var body []byte
 	for body == nil {
@@ -386,5 +447,5 @@ func (r *IMAPRepository) MoveMessagesToMailbox(
 	toMailbox string,
 	msgIDs ...uint64,
 ) error {
-	return nil
+	panic("not implemented")
 }

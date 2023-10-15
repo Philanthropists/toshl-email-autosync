@@ -13,6 +13,7 @@ import (
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/logging"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/dateprocessingrepo"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/mailrepo"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/userconfigrepo"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
 )
 
@@ -54,9 +55,6 @@ func getDependencies(ctx context.Context, config types.Config) (*Dependencies, e
 
 			return nil
 		}
-
-		log.Debug("created an IMAP client")
-
 		return cl
 	}
 
@@ -64,10 +62,13 @@ func getDependencies(ctx context.Context, config types.Config) (*Dependencies, e
 		TimeLocale: loc,
 		BanksRepo:  bank.Repository{},
 		DateRepo: dateprocessingrepo.DynamoDBRepository{
-			DynamoDBClient: dynamoClient,
+			Client: dynamoClient,
 		},
 		MailRepo: &mailrepo.IMAPRepository{
 			NewImapFunc: newImapClientFunc,
+		},
+		UserCfgRepo: &userconfigrepo.DynamoDBRepository{
+			Client: dynamoClient,
 		},
 	}, nil
 }

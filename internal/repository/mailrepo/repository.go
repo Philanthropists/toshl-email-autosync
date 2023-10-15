@@ -30,8 +30,8 @@ type Message struct {
 	BodyData []byte
 }
 
-func (m Message) ID() uint64 {
-	return uint64(m.Message.SeqNum)
+func (m Message) ID() uint32 {
+	return m.Message.SeqNum
 }
 
 func (m Message) From() []string {
@@ -446,20 +446,15 @@ func (r *IMAPRepository) getCompleteMessage(
 func (r *IMAPRepository) MoveMessagesToMailbox(
 	ctx context.Context,
 	toMailbox string,
-	msgIDs ...uint64,
+	msgIDs ...uint32,
 ) error {
 	if len(msgIDs) == 0 {
 		// no messages to move
 		return nil
 	}
 
-	ids := make([]uint32, 0, len(msgIDs))
-	for _, id := range msgIDs {
-		ids = append(ids, uint32(id))
-	}
-
 	seqset := new(imap.SeqSet)
-	seqset.AddNum(ids...)
+	seqset.AddNum(msgIDs...)
 
 	c := r.getClient()
 	err := c.UidMove(seqset, toMailbox)

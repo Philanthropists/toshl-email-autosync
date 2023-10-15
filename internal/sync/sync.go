@@ -37,7 +37,7 @@ type mailRepository interface {
 	GetMessagesFromMailbox(
 		context.Context, string, time.Time,
 	) (<-chan mailrepo.MessageErr, error)
-	MoveMessagesToMailbox(context.Context, string, ...uint64) error
+	MoveMessagesToMailbox(context.Context, string, ...uint32) error
 }
 
 type userConfigRepository interface {
@@ -243,9 +243,9 @@ func (s *Sync) moveParseFailedMessages(ctx context.Context, msgs []banktypes.Mes
 		return nil
 	}
 
-	ids := make([]uint64, 0, len(msgs))
+	ids := make([]uint32, 0, len(msgs))
 	for _, msg := range msgs {
-		ids = append(ids, msg.ID())
+		ids = append(ids, uint32(msg.ID()))
 	}
 
 	err := s.deps.MailRepo.MoveMessagesToMailbox(ctx, s.Config.ParseErrorMailbox, ids...)

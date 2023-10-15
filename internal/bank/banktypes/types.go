@@ -9,7 +9,7 @@ import (
 type MessageID uint64
 
 type Message interface {
-	ID() uint64
+	ID() uint32
 	From() []string
 	Subject() string
 	Date() time.Time

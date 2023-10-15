@@ -117,14 +117,14 @@ func generateCurrency(code string, rate float64) currency.Amount {
 }
 
 type testMessage struct {
-	id      uint64
+	id      uint32
 	from    []string
 	subject string
 	date    time.Time
 	body    []byte
 }
 
-func (m testMessage) ID() uint64      { return m.id }
+func (m testMessage) ID() uint32      { return m.id }
 func (m testMessage) From() []string  { return m.from }
 func (m testMessage) Subject() string { return m.subject }
 func (m testMessage) Date() time.Time { return m.date }

@@ -55,12 +55,6 @@ func configureLogger(execute bool) error {
 		return err
 	}
 
-	version := "dev"
-	if GitCommit != "" && len(GitCommit) >= 3 {
-		version = GitCommit[:3]
-	}
-
-	logger = logger.With(zap.String("version", version))
 	if !execute {
 		logger = logger.With(zap.Bool("dryrun", true))
 	}

@@ -20,10 +20,15 @@ import (
 	utilslices "github.com/Philanthropists/toshl-email-autosync/v2/internal/util/utilslices"
 )
 
+type registerResponse struct {
+	Trx *banktypes.TrxInfo
+	Cfg userconfigrepo.UserConfig
+}
+
 func (s *Sync) registerTrxsIntoAccounting(
 	ctx context.Context,
 	trxs []*banktypes.TrxInfo,
-) (<-chan result.Result[*banktypes.TrxInfo], error) {
+) (<-chan result.Result[registerResponse], error) {
 	log := logging.FromContext(ctx)
 
 	routines := runtime.NumCPU()
@@ -31,7 +36,7 @@ func (s *Sync) registerTrxsIntoAccounting(
 
 	if routines == 0 {
 		// no trxs to register
-		c := make(chan result.Result[*banktypes.TrxInfo])
+		c := make(chan result.Result[registerResponse])
 		close(c)
 		return c, nil
 	}
@@ -49,14 +54,14 @@ func (s *Sync) registerTrxsIntoAccounting(
 	log.Debug("executing with goroutines")
 	ctx = log.GetContext(ctx)
 
-	out := make(chan result.Result[*banktypes.TrxInfo], routines)
+	out := make(chan result.Result[registerResponse], routines)
 
 	var wg sync.WaitGroup
 	wg.Add(routines)
 	for i := 0; i < routines; i++ {
 		go func(
 			ctx context.Context,
-			out chan<- result.Result[*banktypes.TrxInfo],
+			out chan<- result.Result[registerResponse],
 			trxs []*banktypes.TrxInfo,
 		) {
 			defer wg.Done()
@@ -68,9 +73,9 @@ func (s *Sync) registerTrxsIntoAccounting(
 				default:
 				}
 
-				err := s.registerSingleTrxIntoAccounting(ctx, t)
-				res := &result.ConcreteResult[*banktypes.TrxInfo]{
-					Val:   t,
+				r, err := s.registerSingleTrxIntoAccounting(ctx, t)
+				res := &result.ConcreteResult[registerResponse]{
+					Val:   r,
 					Error: err,
 				}
 
@@ -87,19 +92,26 @@ func (s *Sync) registerTrxsIntoAccounting(
 	return out, nil
 }
 
-func (s *Sync) registerSingleTrxIntoAccounting(ctx context.Context, trx *banktypes.TrxInfo) error {
+func (s *Sync) registerSingleTrxIntoAccounting(
+	ctx context.Context,
+	trx *banktypes.TrxInfo,
+) (registerResponse, error) {
 	log := logging.FromContext(ctx)
+	zeroVal := registerResponse{
+		Trx: trx,
+	}
 
 	repo := s.deps.AccountingRepo
 
 	cfg, err := s.getUserConfigFromCandidates(ctx, trx.OriginMessage.To())
 	if err != nil {
-		return err
+		return zeroVal, err
 	}
+	zeroVal.Cfg = cfg
 
 	accounts, err := repo.GetAccounts(ctx, cfg.Toshl.Token)
 	if err != nil {
-		return err
+		return zeroVal, err
 	}
 
 	const categoryPrefix = "PENDING_"
@@ -108,7 +120,7 @@ func (s *Sync) registerSingleTrxIntoAccounting(ctx context.Context, trx *banktyp
 	categoryName := categoryPrefix + strings.ToUpper(categoryType)
 	categoryID, err := s.createCategoryIfAbsent(ctx, cfg.Toshl.Token, categoryType, categoryName)
 	if err != nil {
-		return err
+		return zeroVal, err
 	}
 
 	log = log.With(
@@ -130,7 +142,7 @@ func (s *Sync) registerSingleTrxIntoAccounting(ctx context.Context, trx *banktyp
 
 	account, ok := accountMappings[trx.Account]
 	if !ok {
-		return errs.New("transaction does not have an assigned account %q", trx.Account)
+		return zeroVal, errs.New("transaction does not have an assigned account %q", trx.Account)
 	}
 
 	entryInput := accountingrepotypes.CreateEntryInput{
@@ -150,11 +162,11 @@ func (s *Sync) registerSingleTrxIntoAccounting(ctx context.Context, trx *banktyp
 
 	if s.DryRun {
 		log.Info("not creating entry due to dryrun")
-		return nil
+		return zeroVal, nil
 	}
 
 	err = repo.CreateEntry(ctx, cfg.Toshl.Token, entryInput)
-	return err
+	return zeroVal, err
 }
 
 func getAccountsMapping(

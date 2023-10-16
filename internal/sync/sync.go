@@ -158,7 +158,7 @@ func (s *Sync) Run(ctx context.Context) (genErr error) {
 	// TODO: get all mail entries from mailbox, also beware of context cancelation
 	messages, err := s.deps.MailRepo.GetMessagesFromMailbox(
 		mailCtx,
-		"Bancolombia",
+		"INBOX",
 		lastProcessedDate,
 	)
 	if err != nil {
@@ -207,8 +207,8 @@ func (s *Sync) Run(ctx context.Context) (genErr error) {
 
 		for _, bank := range banks {
 			if bank.ComesFrom(msg.From()) && bank.FilterMessage(msg) {
-				trx, err := bank.ExtractTransactionInfoFromMessage(msg)
-				if err != nil {
+				trx, extractErr := bank.ExtractTransactionInfoFromMessage(msg)
+				if extractErr != nil {
 					parseFailedMsgs = append(parseFailedMsgs, msg)
 					break
 				}
@@ -228,35 +228,49 @@ func (s *Sync) Run(ctx context.Context) (genErr error) {
 
 	log.Debug("transactions that we got",
 		logging.Int("len_trxs", len(trxs)),
-		// logging.Any("trxs", trxs),
 	)
 
 	// TODO: if there are parse errors, each should be archived into the "error parsing" mailbox
-	if err := s.moveParseFailedMessages(ctx, parseFailedMsgs); err != nil {
-		return err
+	if moveErr := s.moveFailedToParseMessages(ctx, parseFailedMsgs); moveErr != nil {
+		return moveErr
 	}
 
 	// TODO: successful parses, are now being registered into the accounting software
-	processingTrxs, err := s.registerTrxsIntoAccounting(ctx, trxs)
+	processedTrxs, err := s.registerTrxsIntoAccounting(ctx, trxs)
 	if err != nil {
 		return err
 	}
 
-	i := 0
-	for range processingTrxs {
-		i++
-	}
-	log.Debug("processed", logging.Int("msgs", i))
-
 	// TODO: each sucessfull to register into accounting is to be archived into the 'processed' mailbox
+	var (
+		registries  []registerResponse
+		successMsgs []banktypes.Message
+	)
+	for t := range processedTrxs {
+		if t.Err() == nil {
+			v := t.Value()
+			registries = append(registries, v)
+			successMsgs = append(successMsgs, v.Trx.OriginMessage)
+		}
+	}
+	moveErr := s.moveSuccessfulMessages(ctx, successMsgs)
+	if moveErr != nil {
+		log.Error("could not move successful messages",
+			logging.Error(moveErr),
+		)
+	}
+	log.Info("moved successful messages",
+		logging.Int("msgs", len(successMsgs)),
+	)
 
 	// TODO: notify each user with the processing report
+	_ = registries
 
 	return nil
 }
 
-func (s *Sync) moveParseFailedMessages(ctx context.Context, msgs []banktypes.Message) error {
-	log := logging.New()
+func (s *Sync) moveFailedToParseMessages(ctx context.Context, msgs []banktypes.Message) error {
+	log := logging.FromContext(ctx)
 
 	if s.DryRun {
 		log.Info("not moving failed parse messages",
@@ -266,16 +280,48 @@ func (s *Sync) moveParseFailedMessages(ctx context.Context, msgs []banktypes.Mes
 	}
 
 	if len(msgs) == 0 {
-		log.Info("no failed parse messages to move")
+		log.Debug("no failed parse messages to move")
 		return nil
 	}
 
 	ids := make([]uint32, 0, len(msgs))
 	for _, msg := range msgs {
-		ids = append(ids, uint32(msg.ID()))
+		ids = append(ids, msg.ID())
 	}
 
 	err := s.deps.MailRepo.MoveMessagesToMailbox(ctx, s.Config.ParseErrorMailbox, ids...)
+	if err != nil {
+		return errs.New(
+			"could not move mails that had parse errors to designated mailbox %q: %w",
+			s.Config.ParseErrorMailbox,
+			err,
+		)
+	}
+
+	return nil
+}
+
+func (s *Sync) moveSuccessfulMessages(ctx context.Context, msgs []banktypes.Message) error {
+	log := logging.FromContext(ctx)
+
+	if s.DryRun {
+		log.Info("not moving successful messages because of dryrun",
+			logging.Int("len_msgs", len(msgs)),
+		)
+		return nil
+	}
+
+	if len(msgs) == 0 {
+		log.Debug("no successful messages to move")
+		return nil
+	}
+
+	ids := make([]uint32, 0, len(msgs))
+	for _, msg := range msgs {
+		ids = append(ids, msg.ID())
+	}
+
+	err := s.deps.MailRepo.MoveMessagesToMailbox(ctx, s.Config.SuccessMailbox, ids...)
 	if err != nil {
 		return errs.New(
 			"could not move mails that had parse errors to designated mailbox %q: %w",

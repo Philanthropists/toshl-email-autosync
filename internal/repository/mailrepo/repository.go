@@ -330,7 +330,7 @@ func (r *IMAPRepository) getCompleteMessage(
 }
 
 func (r *IMAPRepository) MoveMessagesToMailbox(
-	ctx context.Context,
+	_ context.Context,
 	toMailbox string,
 	msgIDs ...uint32,
 ) error {

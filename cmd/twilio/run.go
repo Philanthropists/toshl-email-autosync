@@ -51,6 +51,7 @@ func main() {
 	client := twilio.Client{
 		AccountSid: config.Twilio.AccountSid,
 		Token:      config.Twilio.AuthToken,
+		From:       config.FromNumber,
 	}
 
 	var toNumber string = "" // config.ToNumber
@@ -60,10 +61,10 @@ func main() {
 
 	fmt.Printf("Sending from number %s to %s: %s\n", config.FromNumber, toNumber, *msg)
 
-	res, err := client.SendMessage(config.FromNumber, toNumber, *msg)
+	res, err := client.SendMessage(toNumber, *msg)
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Printf("response: %s\n", res)
+	fmt.Printf("response: %v\n", res)
 }

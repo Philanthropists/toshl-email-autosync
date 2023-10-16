@@ -42,9 +42,14 @@ func getConfig() (types.Config, error) {
 	return config, nil
 }
 
-func configureLogger(execute bool) error {
+func configureLogger(execute, verbose bool) error {
 	config := zap.NewDevelopmentConfig()
 	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	if verbose {
+		config.Level.SetLevel(zapcore.DebugLevel)
+	} else {
+		config.Level.SetLevel(zapcore.InfoLevel)
+	}
 
 	opts := []zap.Option{
 		zap.AddCallerSkip(1),
@@ -68,16 +73,24 @@ func main() {
 
 	var (
 		execute bool
+		verbose bool
 		timeout string
 	)
 
 	flag.BoolVar(&execute, "execute", false, "execute actual changes")
+	flag.BoolVar(&verbose, "verbose", false, "print debug lines")
 	flag.StringVar(&timeout, "timeout", "", "timeout for sync to cancel")
 	flag.Parse()
 
-	if err := configureLogger(execute); err != nil {
+	if err := configureLogger(execute, verbose); err != nil {
 		log.Fatal(err)
 	}
+
+	commit := "dev"
+	if GitCommit != "" {
+		commit = GitCommit
+	}
+	ctx = context.WithValue(ctx, types.VersionCtxKey{}, commit)
 
 	log := logging.New()
 

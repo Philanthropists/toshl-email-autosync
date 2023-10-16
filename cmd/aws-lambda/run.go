@@ -10,7 +10,6 @@ import (
 
 	"github.com/aws/aws-lambda-go/lambda"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/logging"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync"
@@ -59,8 +58,7 @@ func getConfig() (types.Config, error) {
 }
 
 func configureLogger() error {
-	config := zap.NewDevelopmentConfig()
-	config.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	config := zap.NewProductionConfig()
 
 	opts := []zap.Option{
 		zap.AddCallerSkip(1),
@@ -71,12 +69,6 @@ func configureLogger() error {
 		return err
 	}
 
-	version := "dev"
-	if v, err := getVersion(); err == nil {
-		version = v
-	}
-
-	logger = logger.With(zap.String("version", version))
 	logging.SetCustomGlobalLogger(logger)
 
 	return nil
@@ -96,6 +88,16 @@ func HandleRequest(ctx context.Context) error {
 		Config: config,
 		DryRun: false,
 	}
+
+	version := "dev"
+	if v, err := getVersion(); err == nil {
+		version = v
+	}
+
+	ctx = context.WithValue(ctx, types.VersionCtxKey{}, version)
+
+	log := logging.New()
+	ctx = log.With(zap.String("version", version)).GetContext(ctx)
 
 	const awsLambdaTimeout = 140 * time.Second
 	ctx, cancel := context.WithTimeout(ctx, awsLambdaTimeout)

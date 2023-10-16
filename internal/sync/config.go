@@ -11,11 +11,13 @@ import (
 	"github.com/zeebo/errs"
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/bank"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/external/twilio"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/logging"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/services/accountingserv"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/services/accountingserv/proxy"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/services/dateprocessingserv"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/services/mailserv"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/services/notificationserv"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/services/userconfigserv"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
 )
@@ -83,6 +85,13 @@ func getDependencies(ctx context.Context, config types.Config) (*Dependencies, e
 		},
 		AccountingRepo: &accountingserv.ToshlService{
 			ClientBuilder: newToshlClientFunc,
+		},
+		NotificationServ: &notificationserv.NotificationService{
+			SMSClient: &twilio.Client{
+				AccountSid: config.Twilio.AccountSid,
+				Token:      config.Twilio.AuthToken,
+				From:       config.Twilio.FromNumber,
+			},
 		},
 	}, nil
 }

@@ -2,9 +2,10 @@ package sync
 
 import (
 	"context"
-	"slices"
 	"sync"
 	"time"
+
+	"slices"
 
 	"github.com/zeebo/errs"
 	"go.uber.org/zap"
@@ -55,13 +56,19 @@ type accountingService interface {
 	) error
 }
 
+type notificationService interface {
+	SendSMS(ctx context.Context, to, msg string) error
+	SendMail(ctx context.Context, email string) error
+}
+
 type Dependencies struct {
-	TimeLocale     *time.Location
-	BanksRepo      banksService
-	DateRepo       dateService
-	MailRepo       mailService
-	UserCfgRepo    userConfigService
-	AccountingRepo accountingService
+	TimeLocale       *time.Location
+	BanksRepo        banksService
+	DateRepo         dateService
+	MailRepo         mailService
+	UserCfgRepo      userConfigService
+	AccountingRepo   accountingService
+	NotificationServ notificationService
 }
 
 type Sync struct {
@@ -219,12 +226,15 @@ func (s *Sync) Run(ctx context.Context) (genErr error) {
 	var (
 		registries  []registerResponse
 		successMsgs []banktypes.Message
+		failedMsgs  []banktypes.Message
 	)
 	for t := range processedTrxs {
+		v := t.Value()
 		if t.Err() == nil {
-			v := t.Value()
 			registries = append(registries, v)
 			successMsgs = append(successMsgs, v.Trx.OriginMessage)
+		} else {
+			failedMsgs = append(failedMsgs, v.Trx.OriginMessage)
 		}
 	}
 	moveErr := s.moveSuccessfulMessages(ctx, successMsgs)
@@ -237,8 +247,15 @@ func (s *Sync) Run(ctx context.Context) (genErr error) {
 		logging.Int("msgs", len(successMsgs)),
 	)
 
+	// TODO: save last execution date
+	if saveErr := s.saveLastExecutionDate(ctx, failedMsgs); saveErr != nil {
+		log.Error("could not save last execution date", logging.Error(saveErr))
+	}
+
 	// TODO: notify each user with the processing report
-	_ = registries
+	if notifErr := s.notifyUsers(ctx, registries); notifErr != nil {
+		log.Error("could not notify users", logging.Error(notifErr))
+	}
 
 	return nil
 }

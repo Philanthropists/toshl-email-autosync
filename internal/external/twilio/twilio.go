@@ -11,17 +11,13 @@ import (
 
 var twilioErr = errs.Class("twilio")
 
-type twilioAPIService interface {
-	CreateMessage(params *twilioApi.CreateMessageParams) (*twilioApi.ApiV2010Message, error)
-}
-
 type Client struct {
 	AccountSid string
 	Token      string
 	From       string
 
 	once   sync.Once
-	client twilioAPIService
+	client *twilio.RestClient
 }
 
 func (c *Client) init() {
@@ -29,11 +25,19 @@ func (c *Client) init() {
 		c.client = twilio.NewRestClientWithParams(twilio.ClientParams{
 			Username: c.AccountSid,
 			Password: c.Token,
-		}).Api
+		})
 	})
 }
 
 func (c *Client) SendMessage(toNumber, sms string) (_ twiliotypes.APIResponse, genErr error) {
+	const TwilioSMSRecommendedLimit = 320
+	if len(sms) > TwilioSMSRecommendedLimit {
+		return twiliotypes.APIResponse{}, errs.New(
+			"message is larger than twilio's recommended limit [%d], it is %d long",
+			TwilioSMSRecommendedLimit, len(sms),
+		)
+	}
+
 	c.init()
 	defer func() {
 		genErr = twilioErr.Wrap(genErr)
@@ -48,7 +52,7 @@ func (c *Client) SendMessage(toNumber, sms string) (_ twiliotypes.APIResponse, g
 	ps.SetTo(toNumber)
 	ps.SetBody(sms)
 
-	message, err := c.client.CreateMessage(ps)
+	message, err := c.client.Api.CreateMessage(ps)
 	if err != nil {
 		return twiliotypes.APIResponse{}, errs.Wrap(err)
 	}

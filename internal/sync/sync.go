@@ -86,7 +86,7 @@ func (s *Sync) mailSanityCheck(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	log.Info("mailboxes", zap.Strings("mailboxes", mailboxes))
+	log.Debug("mailboxes", zap.Strings("mailboxes", mailboxes))
 
 	const inboxMailbox = "INBOX"
 	if !slices.Contains(mailboxes, inboxMailbox) {
@@ -113,7 +113,7 @@ func (s *Sync) Run(ctx context.Context) (genErr error) {
 		return err
 	}
 
-	log.Info("timelocale set", logging.String("timezone", s.Config.Timezone))
+	log.Debug("timelocale set", logging.String("timezone", s.Config.Timezone))
 
 	// Guidelines:
 	// - For every client, receive a context

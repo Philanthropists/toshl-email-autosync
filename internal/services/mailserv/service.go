@@ -29,14 +29,14 @@ type IMAPClient interface {
 
 type MessageErr result.ConcreteResult[mailservtypes.Message]
 
-type IMAPRepository struct {
+type IMAPService struct {
 	NewImapFunc func() IMAPClient
 
 	poolOnce sync.Once
 	clPool   sync.Pool
 }
 
-func (r *IMAPRepository) getClient() IMAPClient {
+func (r *IMAPService) getClient() IMAPClient {
 	r.poolOnce.Do(func() {
 		f := func() any {
 			return r.NewImapFunc()
@@ -57,7 +57,7 @@ func (r *IMAPRepository) getClient() IMAPClient {
 	return cl.(IMAPClient)
 }
 
-func (r *IMAPRepository) GetAvailableMailboxes(
+func (r *IMAPService) GetAvailableMailboxes(
 	ctx context.Context,
 ) ([]string, error) {
 	rawMailboxes := make(chan *imap.MailboxInfo)
@@ -96,7 +96,7 @@ func (r *IMAPRepository) GetAvailableMailboxes(
 	return mailboxes, nil
 }
 
-func (r *IMAPRepository) GetMessagesFromMailbox(
+func (r *IMAPService) GetMessagesFromMailbox(
 	ctx context.Context,
 	mailbox string,
 	since time.Time,
@@ -185,7 +185,7 @@ func (r *IMAPRepository) GetMessagesFromMailbox(
 	return msgs, nil
 }
 
-func (r *IMAPRepository) getMessagesFromMailbox(
+func (r *IMAPService) getMessagesFromMailbox(
 	ctx context.Context,
 	mailbox string,
 	ids ...uint32,
@@ -249,7 +249,7 @@ func (r *IMAPRepository) getMessagesFromMailbox(
 	return msgs, nil
 }
 
-func (r *IMAPRepository) getCompleteMessages(
+func (r *IMAPService) getCompleteMessages(
 	ctx context.Context,
 	mailbox string,
 	msgs <-chan *imap.Message,
@@ -288,7 +288,7 @@ func (r *IMAPRepository) getCompleteMessages(
 	return out
 }
 
-func (r *IMAPRepository) getCompleteMessage(
+func (r *IMAPService) getCompleteMessage(
 	msg *imap.Message,
 ) (mailservtypes.Message, error) {
 	var section imap.BodySectionName
@@ -329,7 +329,7 @@ func (r *IMAPRepository) getCompleteMessage(
 	}, nil
 }
 
-func (r *IMAPRepository) MoveMessagesToMailbox(
+func (r *IMAPService) MoveMessagesToMailbox(
 	_ context.Context,
 	toMailbox string,
 	msgIDs ...uint32,

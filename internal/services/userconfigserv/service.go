@@ -39,14 +39,14 @@ type inMemoryCache interface {
 	Delete(k string)
 }
 
-type DynamoDBRepository struct {
+type DynamoDBService struct {
 	Client *dynamodb.Client
 
 	once  sync.Once
 	cache inMemoryCache
 }
 
-func (r *DynamoDBRepository) init(ctx context.Context) {
+func (r *DynamoDBService) init(ctx context.Context) {
 	r.once.Do(func() {
 		r.cache = cache.New(5*time.Minute, 1*time.Minute)
 
@@ -54,7 +54,7 @@ func (r *DynamoDBRepository) init(ctx context.Context) {
 	})
 }
 
-func (r *DynamoDBRepository) PreloadAllConfigs(ctx context.Context) error {
+func (r *DynamoDBService) PreloadAllConfigs(ctx context.Context) error {
 	scanIn := &dynamodb.ScanInput{
 		TableName: aws.String(table),
 	}
@@ -93,7 +93,7 @@ func (r *DynamoDBRepository) PreloadAllConfigs(ctx context.Context) error {
 	return nil
 }
 
-func (r *DynamoDBRepository) GetUserConfigFromEmail(
+func (r *DynamoDBService) GetUserConfigFromEmail(
 	ctx context.Context,
 	email string,
 ) (UserConfig, error) {
@@ -132,7 +132,7 @@ func (r *DynamoDBRepository) GetUserConfigFromEmail(
 	// return cfg, nil
 }
 
-func (r *DynamoDBRepository) SaveUserConfig(ctx context.Context, cfg UserConfig) error {
+func (r *DynamoDBService) SaveUserConfig(ctx context.Context, cfg UserConfig) error {
 	it, err := attributevalue.MarshalMap(cfg)
 	if err != nil {
 		return errs.Wrap(err)

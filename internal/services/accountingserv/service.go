@@ -25,13 +25,13 @@ const (
 	Transaction = "transaction"
 )
 
-type ToshlRepository struct {
+type ToshlService struct {
 	ClientBuilder func(string) ToshlClient
 
 	clients sync.Map
 }
 
-func (r *ToshlRepository) getClient(token string) ToshlClient {
+func (r *ToshlService) getClient(token string) ToshlClient {
 	c, ok := r.clients.Load(token)
 	if !ok {
 		c, _ = r.clients.LoadOrStore(token, r.ClientBuilder(token))
@@ -40,7 +40,7 @@ func (r *ToshlRepository) getClient(token string) ToshlClient {
 	return c.(ToshlClient)
 }
 
-func (r *ToshlRepository) GetAccounts(
+func (r *ToshlService) GetAccounts(
 	ctx context.Context,
 	token string,
 ) ([]accountingservtypes.Account, error) {
@@ -65,7 +65,7 @@ func (r *ToshlRepository) GetAccounts(
 	})
 }
 
-func (r *ToshlRepository) GetCategories(
+func (r *ToshlService) GetCategories(
 	ctx context.Context,
 	token string,
 ) ([]accountingservtypes.Category, error) {
@@ -91,7 +91,7 @@ func (r *ToshlRepository) GetCategories(
 	})
 }
 
-func (r *ToshlRepository) CreateCategory(
+func (r *ToshlService) CreateCategory(
 	ctx context.Context, token, catType, category string,
 ) (accountingservtypes.Category, error) {
 	c := r.getClient(token)
@@ -124,7 +124,7 @@ func (r *ToshlRepository) CreateCategory(
 	return id, nil
 }
 
-func (r *ToshlRepository) CreateEntry(
+func (r *ToshlService) CreateEntry(
 	ctx context.Context, token string, entryInput accountingservtypes.CreateEntryInput,
 ) error {
 	log := logging.FromContext(ctx)

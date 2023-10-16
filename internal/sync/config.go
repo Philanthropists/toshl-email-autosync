@@ -72,16 +72,16 @@ func getDependencies(ctx context.Context, config types.Config) (*Dependencies, e
 	return &Dependencies{
 		TimeLocale: loc,
 		BanksRepo:  bank.Repository{},
-		DateRepo: dateprocessingserv.DynamoDBRepository{
+		DateRepo: dateprocessingserv.DynamoDBService{
 			Client: dynamoClient,
 		},
-		MailRepo: &mailserv.IMAPRepository{
+		MailRepo: &mailserv.IMAPService{
 			NewImapFunc: newImapClientFunc,
 		},
-		UserCfgRepo: &userconfigserv.DynamoDBRepository{
+		UserCfgRepo: &userconfigserv.DynamoDBService{
 			Client: dynamoClient,
 		},
-		AccountingRepo: &accountingserv.ToshlRepository{
+		AccountingRepo: &accountingserv.ToshlService{
 			ClientBuilder: newToshlClientFunc,
 		},
 	}, nil

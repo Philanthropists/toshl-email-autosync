@@ -1,4 +1,4 @@
-package accountingrepotypes
+package accountingservtypes
 
 import (
 	"time"

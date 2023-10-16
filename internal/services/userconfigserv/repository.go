@@ -1,4 +1,4 @@
-package userconfigrepo
+package userconfigserv
 
 import (
 	"context"

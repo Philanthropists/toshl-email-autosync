@@ -12,8 +12,8 @@ import (
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/bank/banktypes"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/logging"
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/accountingrepo/accountingrepotypes"
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/userconfigrepo"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/services/accountingserv/accountingservtypes"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/services/userconfigserv"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/types/currency"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/types/result"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/util/utilregexp"
@@ -22,7 +22,7 @@ import (
 
 type registerResponse struct {
 	Trx *banktypes.TrxInfo
-	Cfg userconfigrepo.UserConfig
+	Cfg userconfigserv.UserConfig
 }
 
 func (s *Sync) registerTrxsIntoAccounting(
@@ -145,7 +145,7 @@ func (s *Sync) registerSingleTrxIntoAccounting(
 		return zeroVal, errs.New("transaction does not have an assigned account %q", trx.Account)
 	}
 
-	entryInput := accountingrepotypes.CreateEntryInput{
+	entryInput := accountingservtypes.CreateEntryInput{
 		Date: trx.Date.In(s.deps.TimeLocale),
 		Currency: currency.Amount{
 			Code:   "COP",
@@ -170,13 +170,13 @@ func (s *Sync) registerSingleTrxIntoAccounting(
 }
 
 func getAccountsMapping(
-	accounts []accountingrepotypes.Account,
-	cfg userconfigrepo.UserConfig,
+	accounts []accountingservtypes.Account,
+	cfg userconfigserv.UserConfig,
 	bank string,
-) map[string]accountingrepotypes.Account {
+) map[string]accountingservtypes.Account {
 	exp := regexp.MustCompile(`^(?P<accounts>[0-9\s]+) `)
 
-	mapping := make(map[string]accountingrepotypes.Account)
+	mapping := make(map[string]accountingservtypes.Account)
 	for _, a := range accounts {
 		name := a.Name
 		r := utilregexp.ExtractFields(name, exp)
@@ -242,15 +242,15 @@ func (s *Sync) createCategoryIfAbsent(
 func (s *Sync) getUserConfigFromCandidates(
 	ctx context.Context,
 	candidates []string,
-) (userconfigrepo.UserConfig, error) {
+) (userconfigserv.UserConfig, error) {
 	cfgRepo := s.deps.UserCfgRepo
 
 	found := false
-	var userCfg userconfigrepo.UserConfig
+	var userCfg userconfigserv.UserConfig
 	for _, c := range candidates {
 		cfg, err := cfgRepo.GetUserConfigFromEmail(ctx, c)
 		if err != nil && ctx.Err() != nil {
-			return userconfigrepo.UserConfig{}, ctx.Err()
+			return userconfigserv.UserConfig{}, ctx.Err()
 		}
 
 		if err == nil {
@@ -260,7 +260,7 @@ func (s *Sync) getUserConfigFromCandidates(
 	}
 
 	if !found {
-		return userconfigrepo.UserConfig{}, errs.New("could not find user config from candidates")
+		return userconfigserv.UserConfig{}, errs.New("could not find user config from candidates")
 	}
 
 	return userCfg, nil

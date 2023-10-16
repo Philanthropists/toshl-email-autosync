@@ -1,4 +1,4 @@
-package dateprocessingrepo
+package dateprocessingserv
 
 import (
 	"context"

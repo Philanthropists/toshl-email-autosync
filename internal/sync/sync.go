@@ -2,19 +2,18 @@ package sync
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"time"
-
-	"slices"
 
 	"github.com/zeebo/errs"
 	"go.uber.org/zap"
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/bank/banktypes"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/logging"
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/accountingrepo/accountingrepotypes"
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/mailrepo/mailrepotypes"
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/userconfigrepo"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/services/accountingserv/accountingservtypes"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/services/mailserv/mailservtypes"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/services/userconfigserv"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/types/result"
 )
@@ -34,25 +33,25 @@ type mailRepository interface {
 	GetAvailableMailboxes(context.Context) ([]string, error)
 	GetMessagesFromMailbox(
 		context.Context, string, time.Time,
-	) (<-chan result.Result[mailrepotypes.Message], error)
+	) (<-chan result.Result[mailservtypes.Message], error)
 	MoveMessagesToMailbox(context.Context, string, ...uint32) error
 }
 
 type userConfigRepository interface {
-	GetUserConfigFromEmail(context.Context, string) (userconfigrepo.UserConfig, error)
+	GetUserConfigFromEmail(context.Context, string) (userconfigserv.UserConfig, error)
 }
 
 type accountingRepository interface {
-	GetAccounts(ctx context.Context, token string) ([]accountingrepotypes.Account, error)
-	GetCategories(ctx context.Context, token string) ([]accountingrepotypes.Category, error)
+	GetAccounts(ctx context.Context, token string) ([]accountingservtypes.Account, error)
+	GetCategories(ctx context.Context, token string) ([]accountingservtypes.Category, error)
 	CreateCategory(
 		ctx context.Context,
 		token, catType, category string,
-	) (accountingrepotypes.Category, error)
+	) (accountingservtypes.Category, error)
 	CreateEntry(
 		ctx context.Context,
 		token string,
-		entryInput accountingrepotypes.CreateEntryInput,
+		entryInput accountingservtypes.CreateEntryInput,
 	) error
 }
 

@@ -1,16 +1,15 @@
-package accountingrepo
+package accountingserv
 
 import (
 	"context"
-	"sync"
-
 	"slices"
+	"sync"
 
 	"github.com/Philanthropists/toshl-go"
 	"github.com/zeebo/errs"
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/logging"
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/accountingrepo/accountingrepotypes"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/services/accountingserv/accountingservtypes"
 )
 
 type ToshlClient interface {
@@ -44,18 +43,18 @@ func (r *ToshlRepository) getClient(token string) ToshlClient {
 func (r *ToshlRepository) GetAccounts(
 	ctx context.Context,
 	token string,
-) ([]accountingrepotypes.Account, error) {
+) ([]accountingservtypes.Account, error) {
 	c := r.getClient(token)
 
-	return doCancelableOperation(ctx, func() ([]accountingrepotypes.Account, error) {
+	return doCancelableOperation(ctx, func() ([]accountingservtypes.Account, error) {
 		ac, err := c.Accounts(nil)
 		if err != nil {
 			return nil, err
 		}
 
-		as := make([]accountingrepotypes.Account, 0, len(ac))
+		as := make([]accountingservtypes.Account, 0, len(ac))
 		for _, a := range ac {
-			it := accountingrepotypes.Account{
+			it := accountingservtypes.Account{
 				ID:   a.ID,
 				Name: a.Name,
 			}
@@ -69,18 +68,18 @@ func (r *ToshlRepository) GetAccounts(
 func (r *ToshlRepository) GetCategories(
 	ctx context.Context,
 	token string,
-) ([]accountingrepotypes.Category, error) {
+) ([]accountingservtypes.Category, error) {
 	c := r.getClient(token)
 
-	return doCancelableOperation(ctx, func() ([]accountingrepotypes.Category, error) {
+	return doCancelableOperation(ctx, func() ([]accountingservtypes.Category, error) {
 		cats, err := c.Categories(nil)
 		if err != nil {
 			return nil, err
 		}
 
-		cs := make([]accountingrepotypes.Category, 0, len(cats))
+		cs := make([]accountingservtypes.Category, 0, len(cats))
 		for _, c := range cats {
-			it := accountingrepotypes.Category{
+			it := accountingservtypes.Category{
 				ID:   c.ID,
 				Name: c.Name,
 				Type: c.Type,
@@ -94,7 +93,7 @@ func (r *ToshlRepository) GetCategories(
 
 func (r *ToshlRepository) CreateCategory(
 	ctx context.Context, token, catType, category string,
-) (accountingrepotypes.Category, error) {
+) (accountingservtypes.Category, error) {
 	c := r.getClient(token)
 
 	validCategoryTypes := []string{
@@ -104,7 +103,7 @@ func (r *ToshlRepository) CreateCategory(
 	}
 
 	if !slices.Contains(validCategoryTypes, catType) {
-		return accountingrepotypes.Category{}, errs.New("%q is not a valid category", catType)
+		return accountingservtypes.Category{}, errs.New("%q is not a valid category", catType)
 	}
 
 	cat := toshl.Category{
@@ -114,9 +113,9 @@ func (r *ToshlRepository) CreateCategory(
 
 	err := c.CreateCategory(&cat)
 	if err != nil {
-		return accountingrepotypes.Category{}, err
+		return accountingservtypes.Category{}, err
 	}
-	id := accountingrepotypes.Category{
+	id := accountingservtypes.Category{
 		ID:   cat.ID,
 		Name: cat.Name,
 		Type: cat.Type,
@@ -126,7 +125,7 @@ func (r *ToshlRepository) CreateCategory(
 }
 
 func (r *ToshlRepository) CreateEntry(
-	ctx context.Context, token string, entryInput accountingrepotypes.CreateEntryInput,
+	ctx context.Context, token string, entryInput accountingservtypes.CreateEntryInput,
 ) error {
 	log := logging.FromContext(ctx)
 

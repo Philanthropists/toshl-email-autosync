@@ -1,4 +1,4 @@
-package mailrepotypes
+package mailservtypes
 
 import (
 	"fmt"

@@ -1,4 +1,4 @@
-package mailrepo
+package mailserv
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"github.com/zeebo/errs"
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/logging"
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/mailrepo/mailrepotypes"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/services/mailserv/mailservtypes"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/types/result"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/util/utilslices"
 )
@@ -27,7 +27,7 @@ type IMAPClient interface {
 	UidMove(seqset *imap.SeqSet, dest string) error
 }
 
-type MessageErr result.ConcreteResult[mailrepotypes.Message]
+type MessageErr result.ConcreteResult[mailservtypes.Message]
 
 type IMAPRepository struct {
 	NewImapFunc func() IMAPClient
@@ -100,7 +100,7 @@ func (r *IMAPRepository) GetMessagesFromMailbox(
 	ctx context.Context,
 	mailbox string,
 	since time.Time,
-) (<-chan result.Result[mailrepotypes.Message], error) {
+) (<-chan result.Result[mailservtypes.Message], error) {
 	client := r.getClient()
 
 	_, err := client.Select(mailbox, true)
@@ -127,7 +127,7 @@ func (r *IMAPRepository) GetMessagesFromMailbox(
 
 	if routines == 0 {
 		// no messages to process
-		c := make(chan result.Result[mailrepotypes.Message])
+		c := make(chan result.Result[mailservtypes.Message])
 		close(c)
 		return c, nil
 	}
@@ -139,12 +139,12 @@ func (r *IMAPRepository) GetMessagesFromMailbox(
 
 	ctx, cancel := context.WithCancel(ctx)
 
-	msgs := make(chan result.Result[mailrepotypes.Message], routines)
+	msgs := make(chan result.Result[mailservtypes.Message], routines)
 
 	var wg sync.WaitGroup
 	wg.Add(routines)
 	for i := 0; i < routines; i++ {
-		go func(ctx context.Context, ids []uint32, out chan<- result.Result[mailrepotypes.Message]) {
+		go func(ctx context.Context, ids []uint32, out chan<- result.Result[mailservtypes.Message]) {
 			defer wg.Done()
 			msgs, err := r.getMessagesFromMailbox(ctx, mailbox, ids...)
 			if err != nil {
@@ -189,7 +189,7 @@ func (r *IMAPRepository) getMessagesFromMailbox(
 	ctx context.Context,
 	mailbox string,
 	ids ...uint32,
-) (<-chan result.Result[mailrepotypes.Message], error) {
+) (<-chan result.Result[mailservtypes.Message], error) {
 	client := r.getClient()
 
 	_, err := client.Select(mailbox, true)
@@ -253,8 +253,8 @@ func (r *IMAPRepository) getCompleteMessages(
 	ctx context.Context,
 	mailbox string,
 	msgs <-chan *imap.Message,
-) <-chan result.Result[mailrepotypes.Message] {
-	out := make(chan result.Result[mailrepotypes.Message])
+) <-chan result.Result[mailservtypes.Message] {
+	out := make(chan result.Result[mailservtypes.Message])
 
 	go func() {
 		defer close(out)
@@ -277,7 +277,7 @@ func (r *IMAPRepository) getCompleteMessages(
 			select {
 			case <-ctx.Done():
 				return
-			case out <- result.ConcreteResult[mailrepotypes.Message]{
+			case out <- result.ConcreteResult[mailservtypes.Message]{
 				Error: err,
 				Val:   msg,
 			}:
@@ -290,15 +290,15 @@ func (r *IMAPRepository) getCompleteMessages(
 
 func (r *IMAPRepository) getCompleteMessage(
 	msg *imap.Message,
-) (mailrepotypes.Message, error) {
+) (mailservtypes.Message, error) {
 	var section imap.BodySectionName
 	t := msg.GetBody(&section)
 	if t == nil {
-		return mailrepotypes.Message{}, errs.New("msg has no body")
+		return mailservtypes.Message{}, errs.New("msg has no body")
 	}
 	mr, err := mail.CreateReader(t)
 	if err != nil && mr == nil {
-		return mailrepotypes.Message{}, errs.New("could not create reader: %w", err)
+		return mailservtypes.Message{}, errs.New("could not create reader: %w", err)
 	}
 	defer func() { _ = mr.Close() }()
 
@@ -314,16 +314,16 @@ func (r *IMAPRepository) getCompleteMessage(
 			// This is the message's text (can be plain-text or HTML)
 			body, err = io.ReadAll(p.Body)
 			if err != nil {
-				return mailrepotypes.Message{}, errs.New("could not read from InlineHeader body: %w", err)
+				return mailservtypes.Message{}, errs.New("could not read from InlineHeader body: %w", err)
 			}
 		}
 	}
 
 	if body == nil {
-		return mailrepotypes.Message{}, errs.New("no body found in msg")
+		return mailservtypes.Message{}, errs.New("no body found in msg")
 	}
 
-	return mailrepotypes.Message{
+	return mailservtypes.Message{
 		Message:  *msg,
 		BodyData: body,
 	}, nil

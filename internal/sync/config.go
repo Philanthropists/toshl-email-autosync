@@ -12,11 +12,11 @@ import (
 
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/bank"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/logging"
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/accountingrepo"
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/accountingrepo/proxy"
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/dateprocessingrepo"
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/mailrepo"
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/repository/userconfigrepo"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/services/accountingserv"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/services/accountingserv/proxy"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/services/dateprocessingserv"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/services/mailserv"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/services/userconfigserv"
 	"github.com/Philanthropists/toshl-email-autosync/v2/internal/sync/types"
 )
 
@@ -48,7 +48,7 @@ func getDependencies(ctx context.Context, config types.Config) (*Dependencies, e
 	}
 
 	addr, user, pass := config.Mail.Address, config.Mail.Username, config.Mail.Password
-	newImapClientFunc := func() mailrepo.IMAPClient {
+	newImapClientFunc := func() mailserv.IMAPClient {
 		log := logging.New()
 		defer func() { _ = log.Sync() }()
 
@@ -61,7 +61,7 @@ func getDependencies(ctx context.Context, config types.Config) (*Dependencies, e
 		return cl
 	}
 
-	newToshlClientFunc := func(t string) accountingrepo.ToshlClient {
+	newToshlClientFunc := func(t string) accountingserv.ToshlClient {
 		c := toshl.NewClient(t, nil)
 		proxy := &proxy.ToshlCacheClient{
 			Client: c,
@@ -72,16 +72,16 @@ func getDependencies(ctx context.Context, config types.Config) (*Dependencies, e
 	return &Dependencies{
 		TimeLocale: loc,
 		BanksRepo:  bank.Repository{},
-		DateRepo: dateprocessingrepo.DynamoDBRepository{
+		DateRepo: dateprocessingserv.DynamoDBRepository{
 			Client: dynamoClient,
 		},
-		MailRepo: &mailrepo.IMAPRepository{
+		MailRepo: &mailserv.IMAPRepository{
 			NewImapFunc: newImapClientFunc,
 		},
-		UserCfgRepo: &userconfigrepo.DynamoDBRepository{
+		UserCfgRepo: &userconfigserv.DynamoDBRepository{
 			Client: dynamoClient,
 		},
-		AccountingRepo: &accountingrepo.ToshlRepository{
+		AccountingRepo: &accountingserv.ToshlRepository{
 			ClientBuilder: newToshlClientFunc,
 		},
 	}, nil

@@ -1,58 +1,61 @@
 package twilio
 
 import (
-	"encoding/json"
+	"sync"
 
-	_twilio "github.com/twilio/twilio-go"
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/external/twilio/twiliotypes"
+	"github.com/twilio/twilio-go"
 	twilioApi "github.com/twilio/twilio-go/rest/api/v2010"
 	"github.com/zeebo/errs"
 )
 
 var twilioErr = errs.Class("twilio")
 
+type twilioAPIService interface {
+	CreateMessage(params *twilioApi.CreateMessageParams) (*twilioApi.ApiV2010Message, error)
+}
+
 type Client struct {
 	AccountSid string
 	Token      string
+	From       string
 
-	tc *_twilio.RestClient
+	once   sync.Once
+	client twilioAPIService
 }
 
-func (c *Client) client() *_twilio.RestClient {
-	if c.tc == nil {
-		c.tc = _twilio.NewRestClientWithParams(_twilio.ClientParams{
+func (c *Client) init() {
+	c.once.Do(func() {
+		c.client = twilio.NewRestClientWithParams(twilio.ClientParams{
 			Username: c.AccountSid,
 			Password: c.Token,
-		})
-	}
-
-	return c.tc
+		}).Api
+	})
 }
 
-func (c *Client) SendMessage(from, to, msg string) (_ []byte, genErr error) {
+func (c *Client) SendMessage(toNumber, sms string) (_ twiliotypes.APIResponse, genErr error) {
+	c.init()
 	defer func() {
 		genErr = twilioErr.Wrap(genErr)
 	}()
 
-	tc := c.client()
-
-	if from == "" || to == "" || msg == "" {
-		return nil, errs.New("none of the parameters can be empty")
+	if toNumber == "" || sms == "" {
+		return twiliotypes.APIResponse{}, errs.New("none of the parameters can be empty")
 	}
 
 	ps := &twilioApi.CreateMessageParams{}
-	ps.SetFrom(from)
-	ps.SetTo(to)
-	ps.SetBody(msg)
+	ps.SetFrom(c.From)
+	ps.SetTo(toNumber)
+	ps.SetBody(sms)
 
-	message, err := tc.Api.CreateMessage(ps)
+	message, err := c.client.CreateMessage(ps)
 	if err != nil {
-		return nil, errs.Wrap(err)
+		return twiliotypes.APIResponse{}, errs.Wrap(err)
 	}
 
-	response, err := json.Marshal(*message)
-	if err != nil {
-		return nil, errs.Wrap(err)
+	r := twiliotypes.APIResponse{
+		ApiV2010Message: message,
 	}
 
-	return response, nil
+	return r, nil
 }

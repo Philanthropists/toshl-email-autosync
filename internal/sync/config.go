@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"time"
+	_ "time/tzdata"
 
 	"github.com/Philanthropists/toshl-go"
 	"github.com/aws/aws-sdk-go-v2/config"

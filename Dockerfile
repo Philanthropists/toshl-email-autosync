@@ -11,9 +11,11 @@ ENV LOC=/usr/local/bin
 COPY cmd/aws-lambda ./cmd/aws-lambda
 COPY internal ./internal
 
+# -tags timetzdata Needed for getting timezone locale info (i.e. America/Bogota)
 RUN GOOS=${GOOS} GOARCH=${GOARCH} CGO_ENABLED=${CGO_ENABLED} \
 	go build \
 	-ldflags="-s -w" \
+	-tags timetzdata \
 	-o ${LOC}/main cmd/aws-lambda/run.go
 
 # ---
@@ -32,10 +34,6 @@ ARG COMMIT=dev
 WORKDIR /
 
 COPY --from=tests /empty .
-
-# Needed for getting timezone locale info (i.e. America/Bogota)
-RUN apk update \
-	apk add --no-cache tzdata
 
 COPY docker_entry.sh credentials.json ./
 ADD https://github.com/aws/aws-lambda-runtime-interface-emulator/releases/latest/download/aws-lambda-rie .

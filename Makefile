@@ -68,7 +68,7 @@ bin:
 
 .PHONY: docker-lint
 docker-lint:
-	docker run --rm -i ghcr.io/hadolint/hadolint < Dockerfile
+	docker run --rm -i -v "$(PWD)/.hadolint.yaml:/.config/hadolint.yaml:ro" ghcr.io/hadolint/hadolint < Dockerfile
 
 .PHONY: fmt
 fmt: staticcheck

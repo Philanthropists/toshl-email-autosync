@@ -331,6 +331,7 @@ func (r *IMAPService) getCompleteMessage(
 
 func (r *IMAPService) MoveMessagesToMailbox(
 	_ context.Context,
+	fromMailbox,
 	toMailbox string,
 	msgIDs ...uint32,
 ) error {
@@ -343,7 +344,11 @@ func (r *IMAPService) MoveMessagesToMailbox(
 	seqset.AddNum(msgIDs...)
 
 	c := r.getClient()
-	err := c.UidMove(seqset, toMailbox)
+	_, err := c.Select(fromMailbox, false)
+	if err != nil {
+		return errs.Wrap(err)
+	}
 
+	err = c.UidMove(seqset, toMailbox)
 	return errs.Wrap(err)
 }

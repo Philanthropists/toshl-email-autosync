@@ -46,13 +46,10 @@ func (s *Sync) registerTrxsIntoAccounting(
 		return nil, errs.Wrap(err)
 	}
 
-	log = log.With(
+	log.Debug("executing with goroutines",
 		logging.Int("routines", routines),
 		logging.Int("buckets", len(buckets)),
 	)
-
-	log.Debug("executing with goroutines")
-	ctx = log.GetContext(ctx)
 
 	out := make(chan result.Result[registerResponse], routines)
 

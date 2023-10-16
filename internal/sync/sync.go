@@ -35,7 +35,7 @@ type mailService interface {
 	GetMessagesFromMailbox(
 		context.Context, string, time.Time,
 	) (<-chan result.Result[mailservtypes.Message], error)
-	MoveMessagesToMailbox(context.Context, string, ...uint32) error
+	MoveMessagesToMailbox(_ context.Context, _, _ string, _ ...uint32) error
 }
 
 type userConfigService interface {
@@ -280,7 +280,7 @@ func (s *Sync) moveFailedToParseMessages(ctx context.Context, msgs []banktypes.M
 		ids = append(ids, msg.ID())
 	}
 
-	err := s.deps.MailRepo.MoveMessagesToMailbox(ctx, s.Config.ParseErrorMailbox, ids...)
+	err := s.deps.MailRepo.MoveMessagesToMailbox(ctx, "INBOX", s.Config.ParseErrorMailbox, ids...)
 	if err != nil {
 		return errs.New(
 			"could not move mails that had parse errors to designated mailbox %q: %w",
@@ -312,7 +312,7 @@ func (s *Sync) moveSuccessfulMessages(ctx context.Context, msgs []banktypes.Mess
 		ids = append(ids, msg.ID())
 	}
 
-	err := s.deps.MailRepo.MoveMessagesToMailbox(ctx, s.Config.SuccessMailbox, ids...)
+	err := s.deps.MailRepo.MoveMessagesToMailbox(ctx, "INBOX", s.Config.SuccessMailbox, ids...)
 	if err != nil {
 		return errs.New(
 			"could not move mails that had parse errors to designated mailbox %q: %w",

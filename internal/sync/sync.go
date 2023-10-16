@@ -165,30 +165,7 @@ func (s *Sync) Run(ctx context.Context) (genErr error) {
 		return err
 	}
 
-	// i := 0
-	// for me := range messages {
-	// 	m := me.Msg
-	// 	fmt.Printf("%d: %v -- %s (%d bytes)\n", m.ID(), m.Subject(), m.Date(), len(m.Body()))
-	// 	i++
-	// }
-	//
-	// log.Info("got messages", logging.Int("len", i))
-
 	// TODO: when processing each mail, get each user config for handling notifications (use a cache aswell)
-	// for me := range messages {
-	// 	if me.Err != nil {
-	// 		continue
-	// 	}
-	//
-	// 	log.Info("message",
-	// 		logging.Strings("from", me.Msg.From()),
-	// 		logging.Strings("to", me.Msg.To()),
-	// 		logging.Strings("items", me.Msg.Items()),
-	// 		logging.Strings("flags", me.Msg.Flags()),
-	// 	)
-	// }
-
-	// other thing
 	var (
 		fetchFailedMsgs int = 0
 		totalMsgs       int = 0
@@ -216,11 +193,9 @@ func (s *Sync) Run(ctx context.Context) (genErr error) {
 				trxs = append(trxs, trx)
 			}
 		}
-
-		// totalMsgs++
 	}
 
-	log.Info("message fetching status",
+	log.Debug("message fetching status",
 		logging.Int("failed", fetchFailedMsgs),
 		logging.Int("parse_failed", len(parseFailedMsgs)),
 		logging.Int("total", totalMsgs),
@@ -255,7 +230,7 @@ func (s *Sync) Run(ctx context.Context) (genErr error) {
 	}
 	moveErr := s.moveSuccessfulMessages(ctx, successMsgs)
 	if moveErr != nil {
-		log.Error("could not move successful messages",
+		log.Error("could not move successful messages to success mailbox",
 			logging.Error(moveErr),
 		)
 	}

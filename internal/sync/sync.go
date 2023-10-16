@@ -20,16 +20,16 @@ import (
 
 var syncErr = errs.Class("sync")
 
-type banksRepository interface {
+type banksService interface {
 	GetBanks(context.Context) []banktypes.BankDelegate
 }
 
-type dateRepository interface {
+type dateService interface {
 	GetLastProcessedDate(context.Context) (time.Time, error)
 	SaveProcessedDate(context.Context, time.Time) error
 }
 
-type mailRepository interface {
+type mailService interface {
 	GetAvailableMailboxes(context.Context) ([]string, error)
 	GetMessagesFromMailbox(
 		context.Context, string, time.Time,
@@ -37,11 +37,11 @@ type mailRepository interface {
 	MoveMessagesToMailbox(context.Context, string, ...uint32) error
 }
 
-type userConfigRepository interface {
+type userConfigService interface {
 	GetUserConfigFromEmail(context.Context, string) (userconfigserv.UserConfig, error)
 }
 
-type accountingRepository interface {
+type accountingService interface {
 	GetAccounts(ctx context.Context, token string) ([]accountingservtypes.Account, error)
 	GetCategories(ctx context.Context, token string) ([]accountingservtypes.Category, error)
 	CreateCategory(
@@ -57,11 +57,11 @@ type accountingRepository interface {
 
 type Dependencies struct {
 	TimeLocale     *time.Location
-	BanksRepo      banksRepository
-	DateRepo       dateRepository
-	MailRepo       mailRepository
-	UserCfgRepo    userConfigRepository
-	AccountingRepo accountingRepository
+	BanksRepo      banksService
+	DateRepo       dateService
+	MailRepo       mailService
+	UserCfgRepo    userConfigService
+	AccountingRepo accountingService
 }
 
 type Sync struct {

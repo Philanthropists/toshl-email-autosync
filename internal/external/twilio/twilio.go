@@ -3,10 +3,11 @@ package twilio
 import (
 	"sync"
 
-	"github.com/Philanthropists/toshl-email-autosync/v2/internal/external/twilio/twiliotypes"
 	"github.com/twilio/twilio-go"
 	twilioApi "github.com/twilio/twilio-go/rest/api/v2010"
 	"github.com/zeebo/errs"
+
+	"github.com/Philanthropists/toshl-email-autosync/v2/internal/external/twilio/twiliotypes"
 )
 
 var twilioErr = errs.Class("twilio")
@@ -30,7 +31,8 @@ func (c *Client) init() {
 }
 
 func (c *Client) SendMessage(toNumber, sms string) (_ twiliotypes.APIResponse, genErr error) {
-	const TwilioSMSRecommendedLimit = 320
+	// reference: https://www.twilio.com/docs/glossary/what-sms-character-limit
+	const TwilioSMSRecommendedLimit = 153
 	if len(sms) > TwilioSMSRecommendedLimit {
 		return twiliotypes.APIResponse{}, errs.New(
 			"message is larger than twilio's recommended limit [%d], it is %d long",

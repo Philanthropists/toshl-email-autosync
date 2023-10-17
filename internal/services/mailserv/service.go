@@ -20,11 +20,11 @@ import (
 type IMAPClient interface {
 	List(ref string, name string, ch chan *imap.MailboxInfo) error
 	Select(name string, readOnly bool) (*imap.MailboxStatus, error)
-	UidSearch(criteria *imap.SearchCriteria) (seqNums []uint32, err error)
-	UidFetch(seqset *imap.SeqSet, items []imap.FetchItem, ch chan *imap.Message) error
+	Search(criteria *imap.SearchCriteria) (seqNums []uint32, err error)
+	Fetch(seqset *imap.SeqSet, items []imap.FetchItem, ch chan *imap.Message) error
 	// Copy(seqset *imap.SeqSet, dest string) error
 	// UidStore(*imap.SeqSet, imap.StoreItem, interface{}, chan *imap.Message) error
-	UidMove(seqset *imap.SeqSet, dest string) error
+	Move(seqset *imap.SeqSet, dest string) error
 }
 
 type MessageErr result.ConcreteResult[mailservtypes.Message]
@@ -110,7 +110,7 @@ func (r *IMAPService) GetMessagesFromMailbox(
 
 	criteria := imap.NewSearchCriteria()
 	criteria.Since = since
-	ids, err := client.UidSearch(criteria)
+	ids, err := client.Search(criteria)
 	if err != nil {
 		return nil, errs.Wrap(err)
 	}
@@ -217,7 +217,7 @@ func (r *IMAPService) getMessagesFromMailbox(
 			fetch = append(fetch, s.FetchItem())
 		}
 
-		fetchErr := client.UidFetch(seqset, fetch, messages)
+		fetchErr := client.Fetch(seqset, fetch, messages)
 		if fetchErr != nil {
 			fetchErr = errs.New("failed to fetch messages: %w", fetchErr)
 		}
@@ -349,6 +349,6 @@ func (r *IMAPService) MoveMessagesToMailbox(
 		return errs.Wrap(err)
 	}
 
-	err = c.UidMove(seqset, toMailbox)
+	err = c.Move(seqset, toMailbox)
 	return errs.Wrap(err)
 }

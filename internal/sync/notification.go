@@ -50,7 +50,7 @@ func (s *Sync) notifyUserWithSMS(
 	log := logging.FromContext(ctx)
 
 	const headerFmt = `%s Se registraron %d transacciones`
-	const limit = 7
+	const limit = 2
 
 	version := "dev"
 	if v, ok := ctx.Value(types.VersionCtxKey{}).(string); ok {
@@ -64,20 +64,22 @@ func (s *Sync) notifyUserWithSMS(
 	size := min(limit, len(responses))
 	for i := 0; i < size; i++ {
 		const dateFmt = "2006-01-02"
-		const entryFmt = `%s %.20q $%.0f`
+		const entryFmt = `%s %.20q %s$%.0f`
 
 		r := responses[i]
 		date := r.Trx.Date
 		description := r.Trx.Description
 		value := r.Trx.Value.Number
+		sign := ""
 
 		if r.Trx.Type == banktypes.Expense {
-			value *= -1
+			sign = "-"
 		}
 
 		s := fmt.Sprintf(entryFmt,
 			date.Format(dateFmt),
 			description,
+			sign,
 			value,
 		)
 

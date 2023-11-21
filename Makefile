@@ -12,6 +12,7 @@ build: bin clean fmt credentials test
 	go build -o bin/dynamodb cmd/dynamodb/run.go
 	go build -o bin/twilio cmd/twilio/run.go
 	go build -o bin/archive cmd/archive/run.go
+	go build -o bin/toshl cmd/toshl/toshl.go
 	cp credentials.json bin/
 
 .PHONY: build-for-lambda
